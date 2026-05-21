@@ -1,0 +1,428 @@
+﻿
+> C:\Users\RuaoWork\Desktop\ttt\bailing-dashboard.html:430:      <div class="health-card rounded-xl p-3 sm:p-4 border c
+ursor-pointer transition-all duration-200 hover:shadow-lg hover:scale-[1.02] card-hover" onclick="openAlertFilterPage()
+" id="healthCardWrapper">
+  C:\Users\RuaoWork\Desktop\ttt\bailing-dashboard.html:431:        <div class="flex items-center justify-between mb-3">
+  C:\Users\RuaoWork\Desktop\ttt\bailing-dashboard.html:432:          <h4 class="text-sm font-semibold text-gray-700 fle
+x items-center gap-2">
+  C:\Users\RuaoWork\Desktop\ttt\bailing-dashboard.html:433:            <span class="w-2 h-2 rounded-full health-indicat
+or"></span>
+  C:\Users\RuaoWork\Desktop\ttt\bailing-dashboard.html:434:            健康情况
+  C:\Users\RuaoWork\Desktop\ttt\bailing-dashboard.html:435:          </h4>
+  C:\Users\RuaoWork\Desktop\ttt\bailing-dashboard.html:436:          <svg class="w-4 h-4 text-gray-400" fill="none" str
+oke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 
+7-7 7"/></svg>
+  C:\Users\RuaoWork\Desktop\ttt\bailing-dashboard.html:437:        </div>
+  C:\Users\RuaoWork\Desktop\ttt\bailing-dashboard.html:438:        <div id="alertOverviewCards" class="space-y-2"></div
+>
+  C:\Users\RuaoWork\Desktop\ttt\bailing-dashboard.html:439:        <div class="mt-3 pt-3 border-t border-gray-100 text-
+xs text-gray-400 text-center">
+  C:\Users\RuaoWork\Desktop\ttt\bailing-dashboard.html:440:          点击查看详情
+  C:\Users\RuaoWork\Desktop\ttt\bailing-dashboard.html:441:        </div>
+  C:\Users\RuaoWork\Desktop\ttt\bailing-dashboard.html:442:      </div>
+  C:\Users\RuaoWork\Desktop\ttt\bailing-dashboard.html:443:    </div>
+  C:\Users\RuaoWork\Desktop\ttt\bailing-dashboard.html:444:    
+  C:\Users\RuaoWork\Desktop\ttt\bailing-dashboard.html:445:    <!-- 第三行：工作量统计 + 人员占比 -->
+  C:\Users\RuaoWork\Desktop\ttt\bailing-dashboard.html:446:    <div class="grid grid-cols-1 lg:grid-cols-2 gap-3 sm:gap
+-4">
+  C:\Users\RuaoWork\Desktop\ttt\bailing-dashboard.html:447:      <!-- 工作量统计 -->
+  C:\Users\RuaoWork\Desktop\ttt\bailing-dashboard.html:448:      <div class="bg-gradient-to-br from-green-50 to-emerald
+-50 rounded-xl p-3 sm:p-4 border border-green-100 card-hover">
+  C:\Users\RuaoWork\Desktop\ttt\bailing-dashboard.html:449:        <h4 class="text-sm font-semibold text-gray-700 mb-3 
+flex items-center gap-2">
+  C:\Users\RuaoWork\Desktop\ttt\bailing-dashboard.html:450:          <span class="w-2 h-2 bg-green-500 rounded-full"></
+span>
+  C:\Users\RuaoWork\Desktop\ttt\bailing-dashboard.html:451:          工作量统计
+  C:\Users\RuaoWork\Desktop\ttt\bailing-dashboard.html:452:        </h4>
+  C:\Users\RuaoWork\Desktop\ttt\bailing-dashboard.html:453:        <div class="grid grid-cols-2 gap-2 sm:gap-3 mb-3" id
+="workloadStatsCards"></div>
+  C:\Users\RuaoWork\Desktop\ttt\bailing-dashboard.html:454:        <div style="height:180px;"><canvas id="workloadPieCh
+art"></canvas></div>
+  C:\Users\RuaoWork\Desktop\ttt\bailing-dashboard.html:455:      </div>
+  C:\Users\RuaoWork\Desktop\ttt\bailing-dashboard.html:456:      
+  C:\Users\RuaoWork\Desktop\ttt\bailing-dashboard.html:457:      <!-- 计时/非任务统计 -->
+  C:\Users\RuaoWork\Desktop\ttt\bailing-dashboard.html:458:      <div class="bg-gradient-to-br from-cyan-50 to-indigo-5
+0 rounded-xl p-3 sm:p-4 border border-cyan-100 card-hover">
+  C:\Users\RuaoWork\Desktop\ttt\bailing-dashboard.html:459:        <h4 class="text-sm font-semibold text-gray-700 mb-3 
+flex items-center gap-2">
+  C:\Users\RuaoWork\Desktop\ttt\bailing-dashboard.html:460:          <span class="w-2 h-2 bg-cyan-500 rounded-full"></s
+pan>
+  C:\Users\RuaoWork\Desktop\ttt\bailing-dashboard.html:461:          计时/非任务统计
+  C:\Users\RuaoWork\Desktop\ttt\bailing-dashboard.html:462:        </h4>
+  C:\Users\RuaoWork\Desktop\ttt\bailing-dashboard.html:463:        <div id="personBoardCards" class="grid grid-cols-3 g
+ap-2 mb-3"></div>
+  C:\Users\RuaoWork\Desktop\ttt\bailing-dashboard.html:464:        <div style="height:150px;"><canvas id="personPieChar
+t"></canvas></div>
+  C:\Users\RuaoWork\Desktop\ttt\bailing-dashboard.html:465:        <div class="mt-3 pt-3 border-t border-cyan-100">
+  C:\Users\RuaoWork\Desktop\ttt\bailing-dashboard.html:466:          <div class="text-[11px] text-gray-500 mb-2 flex it
+ems-center gap-2">
+  C:\Users\RuaoWork\Desktop\ttt\bailing-dashboard.html:467:            <span class="w-1 h-3 bg-cyan-500 rounded-full"><
+/span>
+  C:\Users\RuaoWork\Desktop\ttt\bailing-dashboard.html:468:            计时/非任务趋势(h)
+  C:\Users\RuaoWork\Desktop\ttt\bailing-dashboard.html:469:          </div>
+  C:\Users\RuaoWork\Desktop\ttt\bailing-dashboard.html:470:          <div style="height:140px;"><canvas id="taskTrendCh
+art"></canvas></div>
+  C:\Users\RuaoWork\Desktop\ttt\bailing-dashboard.html:471:        </div>
+  C:\Users\RuaoWork\Desktop\ttt\bailing-dashboard.html:472:      </div>
+  C:\Users\RuaoWork\Desktop\ttt\bailing-dashboard.html:473:    </div>
+  C:\Users\RuaoWork\Desktop\ttt\bailing-dashboard.html:474:  </div>
+  C:\Users\RuaoWork\Desktop\ttt\bailing-dashboard.html:475:
+  C:\Users\RuaoWork\Desktop\ttt\bailing-dashboard.html:476:  <!-- ========== 审核看板 ========== -->
+  C:\Users\RuaoWork\Desktop\ttt\bailing-dashboard.html:477:  <!-- 看板1：审核量 & 计时任务（类目维度） -->
+  C:\Users\RuaoWork\Desktop\ttt\bailing-dashboard.html:478:  <div class="card p-3 sm:p-4 mb-4 card-hover">
+  C:\Users\RuaoWork\Desktop\ttt\bailing-dashboard.html:479:    <div class="flex items-center gap-2 mb-3">
+  C:\Users\RuaoWork\Desktop\ttt\bailing-dashboard.html:480:      <span class="w-2 h-6 rounded-full bg-blue-500"></span>
+  C:\Users\RuaoWork\Desktop\ttt\bailing-dashboard.html:481:      <h3 class="text-sm font-bold text-gray-700">审核量 &amp; 
+计时任务（按类目）</h3>
+  C:\Users\RuaoWork\Desktop\ttt\bailing-dashboard.html:482:      <span class="text-xs text-gray-400 ml-auto" id="auditW
+orkInfo"></span>
+  C:\Users\RuaoWork\Desktop\ttt\bailing-dashboard.html:483:    </div>
+  C:\Users\RuaoWork\Desktop\ttt\bailing-dashboard.html:484:    <div class="grid grid-cols-1 xl:grid-cols-2 gap-3 sm:gap
+-4">
+  C:\Users\RuaoWork\Desktop\ttt\bailing-dashboard.html:485:      <div style="height:300px;"><canvas id="auditWorkChart"
+></canvas></div>
+  C:\Users\RuaoWork\Desktop\ttt\bailing-dashboard.html:486:      <div id="auditWorkStats" style="max-height:300px;overf
+low-y:auto;" class="space-y-2 pr-1"></div>
+  C:\Users\RuaoWork\Desktop\ttt\bailing-dashboard.html:487:    </div>
+  C:\Users\RuaoWork\Desktop\ttt\bailing-dashboard.html:488:  </div>
+  C:\Users\RuaoWork\Desktop\ttt\bailing-dashboard.html:489:
+  C:\Users\RuaoWork\Desktop\ttt\bailing-dashboard.html:490:  <!-- 看板1b：审核量 & 计时任务（人维度） -->
+  C:\Users\RuaoWork\Desktop\ttt\bailing-dashboard.html:491:  <div class="card p-3 sm:p-4 mb-4 card-hover">
+  C:\Users\RuaoWork\Desktop\ttt\bailing-dashboard.html:492:    <div class="flex items-center gap-2 mb-3">
+  C:\Users\RuaoWork\Desktop\ttt\bailing-dashboard.html:493:      <span class="w-2 h-6 rounded-full bg-indigo-500"></spa
+n>
+  C:\Users\RuaoWork\Desktop\ttt\bailing-dashboard.html:494:      <h3 class="text-sm font-bold text-gray-700">审核量 &amp; 
+计时任务（按人员）</h3>
+  C:\Users\RuaoWork\Desktop\ttt\bailing-dashboard.html:495:      <span class="text-xs text-gray-400 ml-auto" id="auditW
+orkPersonInfo"></span>
+  C:\Users\RuaoWork\Desktop\ttt\bailing-dashboard.html:496:    </div>
+  C:\Users\RuaoWork\Desktop\ttt\bailing-dashboard.html:497:    <div class="grid grid-cols-1 xl:grid-cols-2 gap-3 sm:gap
+-4">
+  C:\Users\RuaoWork\Desktop\ttt\bailing-dashboard.html:498:      <div style="height:300px;"><canvas id="auditWorkPerson
+Chart"></canvas></div>
+  C:\Users\RuaoWork\Desktop\ttt\bailing-dashboard.html:499:      <div id="auditWorkPersonStats" style="max-height:300px
+;overflow-y:auto;" class="space-y-2 pr-1"></div>
+  C:\Users\RuaoWork\Desktop\ttt\bailing-dashboard.html:500:    </div>
+  C:\Users\RuaoWork\Desktop\ttt\bailing-dashboard.html:501:  </div>
+  C:\Users\RuaoWork\Desktop\ttt\bailing-dashboard.html:502:
+  C:\Users\RuaoWork\Desktop\ttt\bailing-dashboard.html:503:  <!-- 看板2：非任务（类目维度） -->
+  C:\Users\RuaoWork\Desktop\ttt\bailing-dashboard.html:504:  <div class="card p-3 sm:p-4 mb-4 card-hover">
+  C:\Users\RuaoWork\Desktop\ttt\bailing-dashboard.html:505:    <div class="flex items-center gap-2 mb-3">
+  C:\Users\RuaoWork\Desktop\ttt\bailing-dashboard.html:506:      <span class="w-2 h-6 rounded-full bg-orange-500"></spa
+n>
+  C:\Users\RuaoWork\Desktop\ttt\bailing-dashboard.html:507:      <h3 class="text-sm font-bold text-gray-700">非任务（按类目）</
+h3>
+  C:\Users\RuaoWork\Desktop\ttt\bailing-dashboard.html:508:      <span class="text-xs text-gray-400 ml-auto" id="auditN
+ontaskInfo"></span>
+  C:\Users\RuaoWork\Desktop\ttt\bailing-dashboard.html:509:    </div>
+  C:\Users\RuaoWork\Desktop\ttt\bailing-dashboard.html:510:    <div class="grid grid-cols-1 xl:grid-cols-2 gap-3 sm:gap
+-4">
+  C:\Users\RuaoWork\Desktop\ttt\bailing-dashboard.html:511:      <div style="height:300px;"><canvas id="auditNontaskCha
+rt"></canvas></div>
+  C:\Users\RuaoWork\Desktop\ttt\bailing-dashboard.html:512:      <div id="auditNontaskStats" style="max-height:300px;ov
+erflow-y:auto;" class="space-y-2 pr-1"></div>
+  C:\Users\RuaoWork\Desktop\ttt\bailing-dashboard.html:513:    </div>
+  C:\Users\RuaoWork\Desktop\ttt\bailing-dashboard.html:514:  </div>
+  C:\Users\RuaoWork\Desktop\ttt\bailing-dashboard.html:515:
+  C:\Users\RuaoWork\Desktop\ttt\bailing-dashboard.html:516:  <!-- 看板2b：非任务（人维度） -->
+  C:\Users\RuaoWork\Desktop\ttt\bailing-dashboard.html:517:  <div class="card p-3 sm:p-4 mb-4 card-hover">
+  C:\Users\RuaoWork\Desktop\ttt\bailing-dashboard.html:518:    <div class="flex items-center gap-2 mb-3">
+  C:\Users\RuaoWork\Desktop\ttt\bailing-dashboard.html:519:      <span class="w-2 h-6 rounded-full bg-purple-500"></spa
+n>
+  C:\Users\RuaoWork\Desktop\ttt\bailing-dashboard.html:520:      <h3 class="text-sm font-bold text-gray-700">非任务（按人员）</
+h3>
+  C:\Users\RuaoWork\Desktop\ttt\bailing-dashboard.html:521:      <span class="text-xs text-gray-400 ml-auto" id="auditN
+ontaskPersonInfo"></span>
+  C:\Users\RuaoWork\Desktop\ttt\bailing-dashboard.html:522:    </div>
+  C:\Users\RuaoWork\Desktop\ttt\bailing-dashboard.html:523:    <div class="grid grid-cols-1 xl:grid-cols-2 gap-3 sm:gap
+-4">
+  C:\Users\RuaoWork\Desktop\ttt\bailing-dashboard.html:524:      <div style="height:300px;"><canvas id="auditNontaskPer
+sonChart"></canvas></div>
+  C:\Users\RuaoWork\Desktop\ttt\bailing-dashboard.html:525:      <div id="auditNontaskPersonStats" style="max-height:30
+0px;overflow-y:auto;" class="space-y-2 pr-1"></div>
+  C:\Users\RuaoWork\Desktop\ttt\bailing-dashboard.html:526:    </div>
+  C:\Users\RuaoWork\Desktop\ttt\bailing-dashboard.html:527:  </div>
+  C:\Users\RuaoWork\Desktop\ttt\bailing-dashboard.html:528:
+  C:\Users\RuaoWork\Desktop\ttt\bailing-dashboard.html:529:</div>
+  C:\Users\RuaoWork\Desktop\ttt\bailing-dashboard.html:530:
+  C:\Users\RuaoWork\Desktop\ttt\bailing-dashboard.html:531:<!-- ========== VIEW: Detail (当天详情) ========== -->
+  C:\Users\RuaoWork\Desktop\ttt\bailing-dashboard.html:532:<div id="viewDetail" class="view-section fade-in">
+  C:\Users\RuaoWork\Desktop\ttt\bailing-dashboard.html:533:  <div class="mb-4 flex items-center gap-3"><button onclick=
+"showView('dashboard')" class="btn btn-outline btn-sm">← 返回主看板</button><h2 class="text-lg font-bold text-gray-800" id="
+detailTitle">员工详情</h2></div>
+  C:\Users\RuaoWork\Desktop\ttt\bailing-dashboard.html:534:  <div class="grid grid-cols-1 lg:grid-cols-2 gap-4 mb-4">
+  C:\Users\RuaoWork\Desktop\ttt\bailing-dashboard.html:535:    <div class="card p-5"><h3 class="text-sm font-bold text-
+gray-700 mb-4">当日标准条构成</h3><div class="flex items-center justify-center" style="height:300px;"><canvas id="detailDoughn
+ut"></canvas></div></div>
+  C:\Users\RuaoWork\Desktop\ttt\bailing-dashboard.html:536:    <div class="card p-5">
+  C:\Users\RuaoWork\Desktop\ttt\bailing-dashboard.html:537:      <div id="detailMetrics" class="grid grid-cols-2 gap-3 
+mb-4"></div>
+  C:\Users\RuaoWork\Desktop\ttt\bailing-dashboard.html:538:      <!-- 工时利用率详情 -->
+  C:\Users\RuaoWork\Desktop\ttt\bailing-dashboard.html:539:      <div class="mb-4">
+  C:\Users\RuaoWork\Desktop\ttt\bailing-dashboard.html:540:        <h3 class="text-sm font-bold text-gray-700 mb-2 flex
+ items-center gap-2">
+  C:\Users\RuaoWork\Desktop\ttt\bailing-dashboard.html:541:          <span class="w-1 h-4 bg-blue-500 rounded-full"></s
+pan>
+  C:\Users\RuaoWork\Desktop\ttt\bailing-dashboard.html:542:          工时利用率分析
+  C:\Users\RuaoWork\Desktop\ttt\bailing-dashboard.html:543:        </h3>
+  C:\Users\RuaoWork\Desktop\ttt\bailing-dashboard.html:544:        <div id="utilDetailCards"></div>
+  C:\Users\RuaoWork\Desktop\ttt\bailing-dashboard.html:545:      </div>
+  C:\Users\RuaoWork\Desktop\ttt\bailing-dashboard.html:546:      <h3 class="text-sm font-bold text-gray-700 mb-2">任务明细<
+/h3><div class="overflow-x-auto max-h-[340px] overflow-y-auto"><table id="detailTable"><thead><tr><th>任务名称</th><th>通航量<
+/th><th>三审量</th><th>非通航量</th><th>计时(分)</th><th>效能</th><th>标准条</th></tr></thead><tbody></tbody></table></div><div class=
+"mt-2 flex items-center justify-end gap-1" id="detailPager"></div>
+  C:\Users\RuaoWork\Desktop\ttt\bailing-dashboard.html:547:    </div>
+  C:\Users\RuaoWork\Desktop\ttt\bailing-dashboard.html:548:  </div>
+  C:\Users\RuaoWork\Desktop\ttt\bailing-dashboard.html:549:  <!-- 个人周期汇总 -->
+  C:\Users\RuaoWork\Desktop\ttt\bailing-dashboard.html:550:  <div class="card p-4 mb-4">
+  C:\Users\RuaoWork\Desktop\ttt\bailing-dashboard.html:551:    <h3 class="text-sm font-bold text-gray-700 mb-3">个人周期汇总<
+/h3>
+  C:\Users\RuaoWork\Desktop\ttt\bailing-dashboard.html:552:    <div class="grid grid-cols-1 xl:grid-cols-3 gap-3">
+  C:\Users\RuaoWork\Desktop\ttt\bailing-dashboard.html:553:      <div id="detailPeriodCards" class="grid grid-cols-2 ga
+p-2 xl:col-span-1"></div>
+  C:\Users\RuaoWork\Desktop\ttt\bailing-dashboard.html:554:      <div class="xl:col-span-2" style="height:260px;"><canv
+as id="detailPeriodChart"></canvas></div>
+  C:\Users\RuaoWork\Desktop\ttt\bailing-dashboard.html:555:    </div>
+  C:\Users\RuaoWork\Desktop\ttt\bailing-dashboard.html:556:  </div>
+  C:\Users\RuaoWork\Desktop\ttt\bailing-dashboard.html:557:</div>
+  C:\Users\RuaoWork\Desktop\ttt\bailing-dashboard.html:558:
+  C:\Users\RuaoWork\Desktop\ttt\bailing-dashboard.html:559:<!-- ========== VIEW: Audit 每日汇总 ========== -->
+  C:\Users\RuaoWork\Desktop\ttt\bailing-dashboard.html:560:<div id="viewAudit" class="view-section fade-in">
+  C:\Users\RuaoWork\Desktop\ttt\bailing-dashboard.html:561:  <!-- Summary Cards -->
+  C:\Users\RuaoWork\Desktop\ttt\bailing-dashboard.html:562:  <div id="summaryCards" class="grid grid-cols-2 md:grid-col
+s-5 gap-3 mb-4"></div>
+  C:\Users\RuaoWork\Desktop\ttt\bailing-dashboard.html:563:
+  C:\Users\RuaoWork\Desktop\ttt\bailing-dashboard.html:564:  <!-- 顶部公共筛选 -->
+  C:\Users\RuaoWork\Desktop\ttt\bailing-dashboard.html:565:  <div class="card p-4 mb-4">
+  C:\Users\RuaoWork\Desktop\ttt\bailing-dashboard.html:566:    <div class="flex flex-wrap items-end gap-3">
+  C:\Users\RuaoWork\Desktop\ttt\bailing-dashboard.html:567:      <div class="form-group mb-0" style="min-width:140px"><
+label>员工</label><select id="auditFilterEmp" class="appearance-none"><option value="">全部员工</option></select></div>
+  C:\Users\RuaoWork\Desktop\ttt\bailing-dashboard.html:568:      <div class="form-group mb-0" style="min-width:140px"><
+label>分组</label><select id="auditFilterGroup" class="appearance-none" style="min-width:120px"><option value="">全部分组</op
+tion></select></div>
+  C:\Users\RuaoWork\Desktop\ttt\bailing-dashboard.html:569:      <div class="form-group mb-0" style="min-width:150px"><
+label>类目</label><select id="auditFilterTask" class="appearance-none"><option value="">全部类目</option></select></div>
+  C:\Users\RuaoWork\Desktop\ttt\bailing-dashboard.html:570:      <!-- 日期范围选择器 -->
+  C:\Users\RuaoWork\Desktop\ttt\bailing-dashboard.html:571:      <div class="date-range-picker">
+  C:\Users\RuaoWork\Desktop\ttt\bailing-dashboard.html:572:        <label class="date-range-label">日期范围</label>
+  C:\Users\RuaoWork\Desktop\ttt\bailing-dashboard.html:573:        <div class="date-range-inputs">
+  C:\Users\RuaoWork\Desktop\ttt\bailing-dashboard.html:574:          <input type="date" id="auditDateFrom" class="date-
+range-input" placeholder="开始日期">
+  C:\Users\RuaoWork\Desktop\ttt\bailing-dashboard.html:575:          <span class="date-range-separator">~</span>
+  C:\Users\RuaoWork\Desktop\ttt\bailing-dashboard.html:576:          <input type="date" id="auditDateTo" class="date-ra
+nge-input" placeholder="结束日期">
+  C:\Users\RuaoWork\Desktop\ttt\bailing-dashboard.html:577:        </div>
+  C:\Users\RuaoWork\Desktop\ttt\bailing-dashboard.html:578:      </div>
+  C:\Users\RuaoWork\Desktop\ttt\bailing-dashboard.html:579:      <button onclick="applyAuditFilters()" class="btn btn-p
+rimary btn-sm">筛选</button>
+  C:\Users\RuaoWork\Desktop\ttt\bailing-dashboard.html:580:      <button onclick="resetAuditFilters()" class="btn btn-o
+utline btn-sm">重置</button>
+> C:\Users\RuaoWork\Desktop\ttt\bailing-dashboard.html:3441:function openAlertFilterPage() {
+  C:\Users\RuaoWork\Desktop\ttt\bailing-dashboard.html:3442:  // 创建筛选面板
+  C:\Users\RuaoWork\Desktop\ttt\bailing-dashboard.html:3443:  const panelId = 'alertFilterPanel';
+  C:\Users\RuaoWork\Desktop\ttt\bailing-dashboard.html:3444:  const existing = document.getElementById(panelId);
+  C:\Users\RuaoWork\Desktop\ttt\bailing-dashboard.html:3445:  if(existing) existing.parentNode.removeChild(existing);
+  C:\Users\RuaoWork\Desktop\ttt\bailing-dashboard.html:3446:
+  C:\Users\RuaoWork\Desktop\ttt\bailing-dashboard.html:3447:  const panel = document.createElement('div');
+  C:\Users\RuaoWork\Desktop\ttt\bailing-dashboard.html:3448:  panel.id = panelId;
+  C:\Users\RuaoWork\Desktop\ttt\bailing-dashboard.html:3449:  panel.style.cssText = 'position:fixed;inset:0;z-index:999
+9;background:rgba(0,0,0,0.45);display:flex;align-items:flex-start;justify-content:center;overflow-y:auto;padding:24px 1
+6px;';
+  C:\Users\RuaoWork\Desktop\ttt\bailing-dashboard.html:3450:  panel.onclick = function(e) { if(e.target === panel) clos
+eAlertFilterPage(); };
+  C:\Users\RuaoWork\Desktop\ttt\bailing-dashboard.html:3451:
+  C:\Users\RuaoWork\Desktop\ttt\bailing-dashboard.html:3452:  const card = document.createElement('div');
+  C:\Users\RuaoWork\Desktop\ttt\bailing-dashboard.html:3453:  card.style.cssText = 'background:#fff;border-radius:12px;
+box-shadow:0 20px 60px rgba(0,0,0,0.2);width:100%;max-width:960px;margin:auto;max-height:88vh;overflow-y:auto;display:f
+lex;flex-direction:column;';
+  C:\Users\RuaoWork\Desktop\ttt\bailing-dashboard.html:3454:
+  C:\Users\RuaoWork\Desktop\ttt\bailing-dashboard.html:3455:  // 头部
+  C:\Users\RuaoWork\Desktop\ttt\bailing-dashboard.html:3456:  const header = document.createElement('div');
+  C:\Users\RuaoWork\Desktop\ttt\bailing-dashboard.html:3457:  header.style.cssText = 'position:sticky;top:0;background:
+linear-gradient(135deg,#f8fafc 0%,#fff 100%);border-bottom:1px solid #e5e7eb;padding:14px 20px;display:flex;align-items
+:center;justify-content:space-between;border-radius:12px 12px 0 0;z-index:1;';
+  C:\Users\RuaoWork\Desktop\ttt\bailing-dashboard.html:3458:  header.innerHTML = '<div>'
+  C:\Users\RuaoWork\Desktop\ttt\bailing-dashboard.html:3459:    +'<div style="font-size:15px;font-weight:700;color:#1e2
+93b;">异常详情筛选</div>'
+  C:\Users\RuaoWork\Desktop\ttt\bailing-dashboard.html:3460:    +'<div style="font-size:11px;color:#94a3b8;margin-top:2
+px;">支持按类型、严重程度、员工、日期范围筛选</div>'
+  C:\Users\RuaoWork\Desktop\ttt\bailing-dashboard.html:3461:    +'</div>'
+  C:\Users\RuaoWork\Desktop\ttt\bailing-dashboard.html:3462:    +'<button onclick="closeAlertFilterPage()" style="backg
+round:none;border:none;color:#cbd5e1;font-size:22px;cursor:pointer;padding:4px 10px;border-radius:6px;line-height:1;fon
+t-family:system-ui;" onmouseover="this.style.color=\'#64748b\';this.style.background=\'#f1f5f9\'" onmouseout="this.styl
+e.color=\'#cbd5e1\';this.style.background=\'none\'" title="关闭">×</button>';
+  C:\Users\RuaoWork\Desktop\ttt\bailing-dashboard.html:3463:  card.appendChild(header);
+  C:\Users\RuaoWork\Desktop\ttt\bailing-dashboard.html:3464:
+  C:\Users\RuaoWork\Desktop\ttt\bailing-dashboard.html:3465:  // 筛选区域
+  C:\Users\RuaoWork\Desktop\ttt\bailing-dashboard.html:3466:  const filterArea = document.createElement('div');
+  C:\Users\RuaoWork\Desktop\ttt\bailing-dashboard.html:3467:  filterArea.style.cssText = 'padding:16px 20px;border-bott
+om:1px solid #f1f5f9;';
+  C:\Users\RuaoWork\Desktop\ttt\bailing-dashboard.html:3468:  filterArea.innerHTML = '<div style="display:flex;flex-wra
+p:wrap;gap:12px;align-items:center;">'
+  C:\Users\RuaoWork\Desktop\ttt\bailing-dashboard.html:3469:    +'<div style="min-width:120px;">'
+  C:\Users\RuaoWork\Desktop\ttt\bailing-dashboard.html:3470:      +'<div style="font-size:10px;color:#94a3b8;margin-bot
+tom:4px;">异常类型</div>'
+  C:\Users\RuaoWork\Desktop\ttt\bailing-dashboard.html:3471:      +'<select id="filterAlertType" onchange="renderFilter
+edAlerts()" style="padding:6px 10px;border:1.5px solid #e2e8f0;border-radius:8px;font-size:12px;background:#fff;color:#
+1e293b;">'
+  C:\Users\RuaoWork\Desktop\ttt\bailing-dashboard.html:3472:        +'<option value="">全部类型</option>'
+  C:\Users\RuaoWork\Desktop\ttt\bailing-dashboard.html:3473:        +'<option value="workload">工作量异常</option>'
+  C:\Users\RuaoWork\Desktop\ttt\bailing-dashboard.html:3474:        +'<option value="attendance">考勤异常</option>'
+  C:\Users\RuaoWork\Desktop\ttt\bailing-dashboard.html:3475:        +'<option value="utilization">工时利用率异常</option>'
+  C:\Users\RuaoWork\Desktop\ttt\bailing-dashboard.html:3476:        +'<option value="data">数据异常</option>'
+  C:\Users\RuaoWork\Desktop\ttt\bailing-dashboard.html:3477:      +'</select>'
+  C:\Users\RuaoWork\Desktop\ttt\bailing-dashboard.html:3478:    +'</div>'
+  C:\Users\RuaoWork\Desktop\ttt\bailing-dashboard.html:3479:    +'<div style="min-width:100px;">'
+  C:\Users\RuaoWork\Desktop\ttt\bailing-dashboard.html:3480:      +'<div style="font-size:10px;color:#94a3b8;margin-bot
+tom:4px;">严重程度</div>'
+  C:\Users\RuaoWork\Desktop\ttt\bailing-dashboard.html:3481:      +'<select id="filterAlertLevel" onchange="renderFilte
+redAlerts()" style="padding:6px 10px;border:1.5px solid #e2e8f0;border-radius:8px;font-size:12px;background:#fff;color:
+#1e293b;">'
+  C:\Users\RuaoWork\Desktop\ttt\bailing-dashboard.html:3482:        +'<option value="">全部程度</option>'
+  C:\Users\RuaoWork\Desktop\ttt\bailing-dashboard.html:3483:        +'<option value="high">严重</option>'
+  C:\Users\RuaoWork\Desktop\ttt\bailing-dashboard.html:3484:        +'<option value="medium">一般</option>'
+  C:\Users\RuaoWork\Desktop\ttt\bailing-dashboard.html:3485:        +'<option value="low">轻微</option>'
+  C:\Users\RuaoWork\Desktop\ttt\bailing-dashboard.html:3486:      +'</select>'
+  C:\Users\RuaoWork\Desktop\ttt\bailing-dashboard.html:3487:    +'</div>'
+  C:\Users\RuaoWork\Desktop\ttt\bailing-dashboard.html:3488:    +'<div style="min-width:140px;">'
+  C:\Users\RuaoWork\Desktop\ttt\bailing-dashboard.html:3489:      +'<div style="font-size:10px;color:#94a3b8;margin-bot
+tom:4px;">员工姓名</div>'
+  C:\Users\RuaoWork\Desktop\ttt\bailing-dashboard.html:3490:      +'<input type="text" id="filterAlertEmp" oninput="ren
+derFilteredAlerts()" placeholder="输入员工姓名" style="padding:6px 10px;border:1.5px solid #e2e8f0;border-radius:8px;font-siz
+e:12px;width:130px;background:#fff;color:#1e293b;">'
+  C:\Users\RuaoWork\Desktop\ttt\bailing-dashboard.html:3491:    +'</div>'
+  C:\Users\RuaoWork\Desktop\ttt\bailing-dashboard.html:3492:    +'<div style="min-width:130px;">'
+  C:\Users\RuaoWork\Desktop\ttt\bailing-dashboard.html:3493:      +'<div style="font-size:10px;color:#94a3b8;margin-bot
+tom:4px;">开始日期</div>'
+  C:\Users\RuaoWork\Desktop\ttt\bailing-dashboard.html:3494:      +'<input type="date" id="filterAlertDateFrom" onchang
+e="renderFilteredAlerts()" style="padding:6px 10px;border:1.5px solid #e2e8f0;border-radius:8px;font-size:12px;width:12
+0px;background:#fff;color:#1e293b;">'
+  C:\Users\RuaoWork\Desktop\ttt\bailing-dashboard.html:3495:    +'</div>'
+  C:\Users\RuaoWork\Desktop\ttt\bailing-dashboard.html:3496:    +'<div style="min-width:130px;">'
+  C:\Users\RuaoWork\Desktop\ttt\bailing-dashboard.html:3497:      +'<div style="font-size:10px;color:#94a3b8;margin-bot
+tom:4px;">结束日期</div>'
+  C:\Users\RuaoWork\Desktop\ttt\bailing-dashboard.html:3498:      +'<input type="date" id="filterAlertDateTo" onchange=
+"renderFilteredAlerts()" style="padding:6px 10px;border:1.5px solid #e2e8f0;border-radius:8px;font-size:12px;width:120p
+x;background:#fff;color:#1e293b;">'
+  C:\Users\RuaoWork\Desktop\ttt\bailing-dashboard.html:3499:    +'</div>'
+  C:\Users\RuaoWork\Desktop\ttt\bailing-dashboard.html:3500:    +'<div style="margin-left:auto;">'
+  C:\Users\RuaoWork\Desktop\ttt\bailing-dashboard.html:3501:      +'<div style="font-size:10px;color:#94a3b8;margin-bot
+tom:4px;">&nbsp;</div>'
+  C:\Users\RuaoWork\Desktop\ttt\bailing-dashboard.html:3502:      +'<button onclick="resetAlertFilters()" style="paddin
+g:6px 12px;border:1.5px solid #e2e8f0;border-radius:8px;font-size:12px;background:#fff;color:#64748b;cursor:pointer;">重
+置筛选</button>'
+  C:\Users\RuaoWork\Desktop\ttt\bailing-dashboard.html:3503:    +'</div>'
+  C:\Users\RuaoWork\Desktop\ttt\bailing-dashboard.html:3504:  +'</div>';
+  C:\Users\RuaoWork\Desktop\ttt\bailing-dashboard.html:3505:  card.appendChild(filterArea);
+  C:\Users\RuaoWork\Desktop\ttt\bailing-dashboard.html:3506:
+  C:\Users\RuaoWork\Desktop\ttt\bailing-dashboard.html:3507:  // 统计信息
+  C:\Users\RuaoWork\Desktop\ttt\bailing-dashboard.html:3508:  const statsArea = document.createElement('div');
+  C:\Users\RuaoWork\Desktop\ttt\bailing-dashboard.html:3509:  statsArea.id = 'filterAlertStats';
+  C:\Users\RuaoWork\Desktop\ttt\bailing-dashboard.html:3510:  statsArea.style.cssText = 'padding:12px 20px;background:#
+f8fafc;border-bottom:1px solid #f1f5f9;font-size:12px;color:#64748b;';
+  C:\Users\RuaoWork\Desktop\ttt\bailing-dashboard.html:3511:  card.appendChild(statsArea);
+  C:\Users\RuaoWork\Desktop\ttt\bailing-dashboard.html:3512:
+  C:\Users\RuaoWork\Desktop\ttt\bailing-dashboard.html:3513:  // 列表区域
+  C:\Users\RuaoWork\Desktop\ttt\bailing-dashboard.html:3514:  const listArea = document.createElement('div');
+  C:\Users\RuaoWork\Desktop\ttt\bailing-dashboard.html:3515:  listArea.id = 'filterAlertList';
+  C:\Users\RuaoWork\Desktop\ttt\bailing-dashboard.html:3516:  listArea.style.cssText = 'flex:1;overflow-y:auto;padding:
+16px 20px;max-height:calc(88vh - 220px);';
+  C:\Users\RuaoWork\Desktop\ttt\bailing-dashboard.html:3517:  card.appendChild(listArea);
+  C:\Users\RuaoWork\Desktop\ttt\bailing-dashboard.html:3518:
+  C:\Users\RuaoWork\Desktop\ttt\bailing-dashboard.html:3519:  panel.appendChild(card);
+  C:\Users\RuaoWork\Desktop\ttt\bailing-dashboard.html:3520:  document.body.appendChild(panel);
+  C:\Users\RuaoWork\Desktop\ttt\bailing-dashboard.html:3521:
+  C:\Users\RuaoWork\Desktop\ttt\bailing-dashboard.html:3522:  // 初始渲染
+  C:\Users\RuaoWork\Desktop\ttt\bailing-dashboard.html:3523:  renderFilteredAlerts();
+  C:\Users\RuaoWork\Desktop\ttt\bailing-dashboard.html:3524:}
+  C:\Users\RuaoWork\Desktop\ttt\bailing-dashboard.html:3525:
+  C:\Users\RuaoWork\Desktop\ttt\bailing-dashboard.html:3526:/**
+  C:\Users\RuaoWork\Desktop\ttt\bailing-dashboard.html:3527: * 重置异常筛选条件
+  C:\Users\RuaoWork\Desktop\ttt\bailing-dashboard.html:3528: */
+  C:\Users\RuaoWork\Desktop\ttt\bailing-dashboard.html:3529:function resetAlertFilters() {
+  C:\Users\RuaoWork\Desktop\ttt\bailing-dashboard.html:3530:  const el1=document.getElementById('filterAlertType');
+  C:\Users\RuaoWork\Desktop\ttt\bailing-dashboard.html:3531:  const el2=document.getElementById('filterAlertLevel');
+  C:\Users\RuaoWork\Desktop\ttt\bailing-dashboard.html:3532:  const el3=document.getElementById('filterAlertEmp');
+  C:\Users\RuaoWork\Desktop\ttt\bailing-dashboard.html:3533:  const el4=document.getElementById('filterAlertDateFrom');
+  C:\Users\RuaoWork\Desktop\ttt\bailing-dashboard.html:3534:  const el5=document.getElementById('filterAlertDateTo');
+  C:\Users\RuaoWork\Desktop\ttt\bailing-dashboard.html:3535:  if(el1) el1.value=''; if(el2) el2.value=''; if(el3) el3.v
+alue=''; if(el4) el4.value=''; if(el5) el5.value='';
+  C:\Users\RuaoWork\Desktop\ttt\bailing-dashboard.html:3536:  renderFilteredAlerts();
+  C:\Users\RuaoWork\Desktop\ttt\bailing-dashboard.html:3537:}
+  C:\Users\RuaoWork\Desktop\ttt\bailing-dashboard.html:3538:
+  C:\Users\RuaoWork\Desktop\ttt\bailing-dashboard.html:3539:/**
+  C:\Users\RuaoWork\Desktop\ttt\bailing-dashboard.html:3540: * 渲染筛选后的异常列表 - 横向表格形式
+  C:\Users\RuaoWork\Desktop\ttt\bailing-dashboard.html:3541: */
+  C:\Users\RuaoWork\Desktop\ttt\bailing-dashboard.html:3542:function renderFilteredAlerts() {
+  C:\Users\RuaoWork\Desktop\ttt\bailing-dashboard.html:3543:  const typeFilter = document.getElementById('filterAlertTy
+pe')?.value || '';
+  C:\Users\RuaoWork\Desktop\ttt\bailing-dashboard.html:3544:  const levelFilter = document.getElementById('filterAlertL
+evel')?.value || '';
+  C:\Users\RuaoWork\Desktop\ttt\bailing-dashboard.html:3545:  const empFilter = (document.getElementById('filterAlertEm
+p')?.value || '').toLowerCase();
+  C:\Users\RuaoWork\Desktop\ttt\bailing-dashboard.html:3546:  const dateFrom = document.getElementById('filterAlertDate
+From')?.value || '';
+  C:\Users\RuaoWork\Desktop\ttt\bailing-dashboard.html:3547:  const dateTo = document.getElementById('filterAlertDateTo
+')?.value || '';
+  C:\Users\RuaoWork\Desktop\ttt\bailing-dashboard.html:3548:
+  C:\Users\RuaoWork\Desktop\ttt\bailing-dashboard.html:3549:  let filtered = AppEnhancedAlerts.all || [];
+  C:\Users\RuaoWork\Desktop\ttt\bailing-dashboard.html:3550:
+  C:\Users\RuaoWork\Desktop\ttt\bailing-dashboard.html:3551:  // 应用筛选
+  C:\Users\RuaoWork\Desktop\ttt\bailing-dashboard.html:3552:  if(typeFilter) {
+  C:\Users\RuaoWork\Desktop\ttt\bailing-dashboard.html:3553:    filtered = filtered.filter(a => a.category === typeFilt
+er);
+  C:\Users\RuaoWork\Desktop\ttt\bailing-dashboard.html:3554:  }
+  C:\Users\RuaoWork\Desktop\ttt\bailing-dashboard.html:3555:  if(levelFilter) {
+  C:\Users\RuaoWork\Desktop\ttt\bailing-dashboard.html:3556:    filtered = filtered.filter(a => a.level === levelFilter
+);
+  C:\Users\RuaoWork\Desktop\ttt\bailing-dashboard.html:3557:  }
+  C:\Users\RuaoWork\Desktop\ttt\bailing-dashboard.html:3558:  if(empFilter) {
+  C:\Users\RuaoWork\Desktop\ttt\bailing-dashboard.html:3559:    filtered = filtered.filter(a => (a.emp || '').toLowerCa
+se().includes(empFilter));
+  C:\Users\RuaoWork\Desktop\ttt\bailing-dashboard.html:3560:  }
+  C:\Users\RuaoWork\Desktop\ttt\bailing-dashboard.html:3561:  if(dateFrom) {
+  C:\Users\RuaoWork\Desktop\ttt\bailing-dashboard.html:3562:    filtered = filtered.filter(a => (a.date || '') >= dateF
+rom);
+  C:\Users\RuaoWork\Desktop\ttt\bailing-dashboard.html:3563:  }
+  C:\Users\RuaoWork\Desktop\ttt\bailing-dashboard.html:3564:  if(dateTo) {
+  C:\Users\RuaoWork\Desktop\ttt\bailing-dashboard.html:3565:    filtered = filtered.filter(a => (a.date || '') <= dateT
+o);
+  C:\Users\RuaoWork\Desktop\ttt\bailing-dashboard.html:3566:  }
+  C:\Users\RuaoWork\Desktop\ttt\bailing-dashboard.html:3567:
+  C:\Users\RuaoWork\Desktop\ttt\bailing-dashboard.html:3568:  // 更新统计
+  C:\Users\RuaoWork\Desktop\ttt\bailing-dashboard.html:3569:  const statsEl = document.getElementById('filterAlertStats
+');
+  C:\Users\RuaoWork\Desktop\ttt\bailing-dashboard.html:3570:  if(statsEl) {
+  C:\Users\RuaoWork\Desktop\ttt\bailing-dashboard.html:3571:    const highCount = filtered.filter(a => a.level === 'hig
+h').length;
+  C:\Users\RuaoWork\Desktop\ttt\bailing-dashboard.html:3572:    const mediumCount = filtered.filter(a => a.level === 'm
+edium').length;
+  C:\Users\RuaoWork\Desktop\ttt\bailing-dashboard.html:3573:    const lowCount = filtered.filter(a => a.level === 'low'
+).length;
+  C:\Users\RuaoWork\Desktop\ttt\bailing-dashboard.html:3574:    statsEl.innerHTML = `<span class="font-medium">${filter
+ed.length}</span> 条异常 · `
+  C:\Users\RuaoWork\Desktop\ttt\bailing-dashboard.html:3575:      + `<span style="color:#ef4444;">●</span> 严重 ${highCou
+nt} · `
+  C:\Users\RuaoWork\Desktop\ttt\bailing-dashboard.html:3576:      + `<span style="color:#f59e0b;">●</span> 一般 ${mediumC
+ount} · `
+  C:\Users\RuaoWork\Desktop\ttt\bailing-dashboard.html:3577:      + `<span style="color:#64748b;">●</span> 轻微 ${lowCoun
+t}`;
+  C:\Users\RuaoWork\Desktop\ttt\bailing-dashboard.html:3578:  }
+  C:\Users\RuaoWork\Desktop\ttt\bailing-dashboard.html:3579:
+  C:\Users\RuaoWork\Desktop\ttt\bailing-dashboard.html:3580:  // 渲染列表
+  C:\Users\RuaoWork\Desktop\ttt\bailing-dashboard.html:3581:  const listEl = document.getElementById('filterAlertList')
+;
+  C:\Users\RuaoWork\Desktop\ttt\bailing-dashboard.html:3582:  if(!listEl) return;
+  C:\Users\RuaoWork\Desktop\ttt\bailing-dashboard.html:3583:
+  C:\Users\RuaoWork\Desktop\ttt\bailing-dashboard.html:3584:  if(!filtered.length) {
+  C:\Users\RuaoWork\Desktop\ttt\bailing-dashboard.html:3585:    listEl.innerHTML = '<div style="text-align:center;paddi
+ng:40px 0;color:#94a3b8;">'
+  C:\Users\RuaoWork\Desktop\ttt\bailing-dashboard.html:3586:      +'<div style="font-size:32px;margin-bottom:8px;">🔍</
+div>'
+  C:\Users\RuaoWork\Desktop\ttt\bailing-dashboard.html:3587:      +'<div>暂无符合条件的异常记录</div>'
+  C:\Users\RuaoWork\Desktop\ttt\bailing-dashboard.html:3588:      +'</div>';
+  C:\Users\RuaoWork\Desktop\ttt\bailing-dashboard.html:3589:    return;
+  C:\Users\RuaoWork\Desktop\ttt\bailing-dashboard.html:3590:  }
+  C:\Users\RuaoWork\Desktop\ttt\bailing-dashboard.html:3591:
+
+

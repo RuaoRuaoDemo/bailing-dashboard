@@ -1,0 +1,46 @@
+<!DOCTYPE html>
+<html><head><meta charset="UTF-8"><title>诊断</title></head>
+<body style="font-family:monospace;padding:20px">
+<h2>JavaScript错误诊断器</h2>
+<div id="out" style="background:#f5f5f5;padding:15px;white-space:pre-wrap"></div>
+<input type="file" id="file" accept=".html" />
+<script>
+document.getElementById('file').onchange = function(e) {
+  const f = e.target.files[0];
+  if(!f) return;
+  const r = new FileReader();
+  r.onload = function(){
+    const html = r.result;
+    const m = html.match(/<script>(?!.*src)([\s\S]*?)<\/script>/);
+    if(!m) { document.getElementById('out').textContent = 'No main script found'; return; }
+    const code = m[1];
+    const out = document.getElementById('out');
+    out.textContent = 'Script length: ' + code.length + ' chars\n';
+    try {
+      new Function(code);
+      out.textContent += '\n✓ SYNTAX OK';
+    } catch(e) {
+      out.textContent += '\n✗ SYNTAX ERROR:\n' + e.message + '\n\n';
+      if(e.stack) {
+        out.textContent += 'Stack:\n' + e.stack + '\n';
+        const m2 = e.stack.match(/:(\d+):(\d+)/);
+        if(m2) {
+          const line = parseInt(m2[1]);
+          out.textContent += '\nError at script line ' + line + '\n';
+          const lines = code.split('\n');
+          const from = Math.max(0, line - 8);
+          const to = Math.min(lines.length, line + 5);
+          out.textContent += '\nContext:\n';
+          for(let i = from; i < to; i++) {
+            const mk = (i+1 === line) ? '>>> ' : '    ';
+            out.textContent += mk + (i+1) + ': ' + lines[i] + '\n';
+          }
+        }
+      }
+    }
+  };
+  r.readAsText(f, 'UTF-8');
+};
+</script>
+<p>使用方法：点击"选择文件"然后选择 bailing-dashboard.html</p>
+</body></html>
