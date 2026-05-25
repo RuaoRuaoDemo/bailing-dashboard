@@ -882,6 +882,10 @@
           <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12"/></svg>
           上传数据
         </button>
+        <button id="syncGSheetBtn" onclick="syncGoogleSchedule()" class="btn btn-outline btn-sm" title="从Google Sheet同步排班数据">
+          <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h5M20 20v-5h-5M4 9a9 9 0 0114.85-3.36L20 7M20 15a9 9 0 01-14.85 3.36L4 17"/></svg>
+          同步排班
+        </button>
         <button id="downloadBoardBtn" onclick="downloadBoardAsHTML()" class="btn btn-outline btn-sm" title="下载当前看板为独立HTML文件（含数据）">
           <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"/></svg>
           下载看板
@@ -10109,9 +10113,224 @@ function bindSchedImport(){
 }
 
 // ============================================================
-// V9.0：Google Sheet 同步已移除（线上部署不需要）
-// 排班数据改为通过"上传数据"按钮导入 Excel 文件
+// V9.0：Google Sheet 排班同步（恢复）
 // ============================================================
+const GSHEET_CONFIG = {
+  spreadsheetId: '1kfDmcx1irQWKTcjNaUr5-dmQCVgeUkH1YCcAGQvQNRU',
+  sheets: [
+    { prefix: '云雀', periodType: '21to20', org: 'H1组', startCol: 'G', endCol: 'AK' },
+    { prefix: '联营', periodType: '1toEnd', org: '嘉兰项目', startCol: 'G', endCol: 'AK' }
+  ]
+};
+
+/**
+ * 从 Google Sheet 同步排班数据
+ * 使用 JSONP 方式绕过 CORS 限制（file:// 协议下 fetch 无法跨域）
+ * 拉取当月、上月、下月的 sheet 页
+ */
+async function syncGoogleSchedule(){
+  const setStatus = (msg, dur) => { if(typeof _fsShowSyncHint === 'function') _fsShowSyncHint(msg, dur||3000); };
+  setStatus('正在同步Google班表...', 15000);
+
+  try {
+    App._gsheetEmpOrder = []; // 重置排序
+    const now = new Date();
+    const curMonth = now.getMonth() + 1;
+    const curYear = now.getFullYear();
+    // 拉取：上月、当月、下月
+    const monthList = [];
+    const prevMonth = curMonth === 1 ? 12 : curMonth - 1;
+    const nextMonth = curMonth === 12 ? 1 : curMonth + 1;
+    monthList.push(curMonth, prevMonth, nextMonth);
+
+    let totalParsed = 0;
+    const errors = [];
+    const loaded = [];
+
+    for(const sheetCfg of GSHEET_CONFIG.sheets){
+      for(const month of monthList){
+        const sheetName = sheetCfg.prefix + '-' + month + '月排班';
+        try {
+          const count = await _fetchGSheetJSONP(sheetName, curYear, sheetCfg);
+          if(count > 0){
+            totalParsed += count;
+            loaded.push(sheetName);
+          }
+        } catch(e) {
+          if(e.message && e.message.includes('not found')){
+            // sheet不存在，正常跳过
+          } else {
+            console.warn('[GSheet] 拉取失败:', sheetName, e.message);
+            errors.push(sheetName);
+          }
+        }
+      }
+    }
+
+    // 保存 + 渲染
+    if(typeof saveScheduleStorage === 'function') saveScheduleStorage();
+    if(typeof renderScheduleView === 'function') renderScheduleView();
+    if(typeof calcAll === 'function') calcAll();
+    if(typeof renderAll === 'function') renderAll();
+    if(typeof saveToLocalStorage === 'function') saveToLocalStorage();
+
+    if(totalParsed > 0){
+      setStatus('已同步 ' + loaded.length + ' 个排班表', 3000);
+      console.log('[GSheet] 同步完成:', loaded.join(', '));
+    } else if(errors.length) {
+      setStatus('同步失败，请检查网络', 4000);
+    } else {
+      setStatus('未找到排班数据', 3000);
+    }
+  } catch(e) {
+    console.error('[GSheet] 同步异常:', e);
+    setStatus('同步失败：' + (e.message||''), 4000);
+  }
+}
+
+/**
+ * 通过 JSONP 拉取 Google Sheet 数据
+ */
+function _fetchGSheetJSONP(sheetName, baseYear, sheetCfg){
+  return new Promise((resolve, reject) => {
+    const cbName = '_gsCb_' + Date.now() + '_' + Math.random().toString(36).slice(2,8);
+    const timeout = setTimeout(() => {
+      delete window[cbName];
+      if(script.parentNode) script.parentNode.removeChild(script);
+      reject(new Error('timeout'));
+    }, 15000);
+
+    window[cbName] = function(response){
+      clearTimeout(timeout);
+      delete window[cbName];
+      if(script.parentNode) script.parentNode.removeChild(script);
+      if(!response || !response.table){
+        reject(new Error('not found'));
+        return;
+      }
+      try {
+        const count = _parseGSheetAuto(response.table, baseYear, sheetCfg);
+        resolve(count);
+      } catch(e){ reject(e); }
+    };
+
+    const url = 'https://docs.google.com/spreadsheets/d/' + GSHEET_CONFIG.spreadsheetId + '/gviz/tq?tqx=responseHandler:' + cbName + '&sheet=' + encodeURIComponent(sheetName);
+    const script = document.createElement('script');
+    script.src = url;
+    script.onerror = function(){
+      clearTimeout(timeout);
+      delete window[cbName];
+      if(script.parentNode) script.parentNode.removeChild(script);
+      reject(new Error('script load failed'));
+    };
+    document.head.appendChild(script);
+  });
+}
+
+/**
+ * 自动解析 Google Sheet 数据
+ */
+function _parseGSheetAuto(table, baseYear, sheetCfg){
+  if(!table.rows || !table.cols || table.rows.length < 3) return 0;
+
+  const getCell = (row, ci) => {
+    if(!row || !row.c || !row.c[ci]) return '';
+    const c = row.c[ci];
+    return (c.f || (c.v !== null && c.v !== undefined ? String(c.v) : '')).trim();
+  };
+
+  // 1. 找日期行（第一行含"X月Y日"格式的行）
+  let dateRowIdx = -1;
+  let dateStartCol = -1;
+  for(let ri = 0; ri < Math.min(5, table.rows.length); ri++){
+    for(let ci = 0; ci < table.cols.length; ci++){
+      const v = getCell(table.rows[ri], ci);
+      if(/\d{1,2}月\d{1,2}日/.test(v)){
+        dateRowIdx = ri;
+        dateStartCol = ci;
+        break;
+      }
+    }
+    if(dateRowIdx >= 0) break;
+  }
+  if(dateRowIdx < 0 || dateStartCol < 0) return 0;
+
+  // 2. 解析日期列
+  const dateCols = [];
+  for(let ci = dateStartCol; ci < table.cols.length; ci++){
+    const raw = getCell(table.rows[dateRowIdx], ci);
+    const m = raw.match(/(\d{1,2})月(\d{1,2})日/);
+    if(!m) continue;
+    const month = parseInt(m[1]);
+    const day = parseInt(m[2]);
+    let year = baseYear;
+    if(month === 12 && new Date().getMonth() + 1 <= 2) year = baseYear - 1;
+    if(month === 1 && new Date().getMonth() + 1 >= 11) year = baseYear + 1;
+    const isoDate = year + '-' + String(month).padStart(2, '0') + '-' + String(day).padStart(2, '0');
+    dateCols.push({ colIdx: ci, date: isoDate });
+  }
+  if(!dateCols.length) return 0;
+
+  // 3. 构建已知员工名单（从 dailyData/rawRows/utilRows + 白名单）
+  const knownEmps = new Set();
+  if(App.whitelistSet) for(const v of App.whitelistSet) knownEmps.add(v);
+  for(const d of (App.dailyData||[])){ if(d.emp) knownEmps.add(d.emp); if(d.empEn) knownEmps.add(d.empEn); }
+  for(const r of (App.rawRows||[])){ if(r._emp) knownEmps.add(r._emp); if(r._empEn) knownEmps.add(r._empEn); }
+  for(const u of (App.utilRows||[])){ if(u._emp) knownEmps.add(u._emp); if(u._chineseName) knownEmps.add(u._chineseName); }
+  if(App.enToCnMap) for(const [k,v] of App.enToCnMap){ knownEmps.add(k); knownEmps.add(v); }
+
+  const empEnCol = 0; // A列
+  const empCnCol = 1; // B列
+
+  let parsedCount = 0;
+  for(let ri = 0; ri < table.rows.length; ri++){
+    if(ri === dateRowIdx || ri === dateRowIdx + 1) continue;
+    const row = table.rows[ri];
+    const empEn = getCell(row, empEnCol);
+    const empCn = getCell(row, empCnCol);
+    if(!empEn && !empCn) continue;
+    // 只同步已知员工（有数据时过滤；无数据时全部导入）
+    if(knownEmps.size > 0 && !knownEmps.has(empEn) && !knownEmps.has(empCn)) continue;
+    const empName = empCn || empEn;
+
+    // 记录顺序
+    if(!App._gsheetEmpOrder) App._gsheetEmpOrder = [];
+    if(!App._gsheetEmpOrder.includes(empName)) App._gsheetEmpOrder.push(empName);
+
+    // 英中映射
+    if(App.enToCnMap && empEn && empCn) App.enToCnMap.set(empEn, empCn);
+    if(App.empEnMap && empCn && empEn) App.empEnMap.set(empCn, empEn);
+
+    // 读取班次数据
+    for(const dc of dateCols){
+      const codeStr = getCell(row, dc.colIdx);
+      if(!codeStr) continue;
+      const key = empName + '_' + dc.date;
+      const sd = (typeof getShiftDisplay === 'function') ? getShiftDisplay(codeStr) : {label:codeStr,type:'unknown',expectedStd:0};
+      App.scheduleMap[key] = {
+        emp: empName, date: dc.date, code: codeStr,
+        name: sd.label, type: sd.type,
+        expectedStd: sd.expectedStd || 0,
+        source: 'google'
+      };
+      // 英文名也作为key
+      if(empEn){
+        const keyEn = empEn + '_' + dc.date;
+        if(!App.scheduleMap[keyEn]){
+          App.scheduleMap[keyEn] = {
+            emp: empEn, date: dc.date, code: codeStr,
+            name: sd.label, type: sd.type,
+            expectedStd: sd.expectedStd || 0,
+            source: 'google'
+          };
+        }
+      }
+      parsedCount++;
+    }
+  }
+  console.log('[GSheet]', sheetCfg.prefix, '解析完成:', parsedCount, '条, 日期:', dateCols[0]?.date, '~', dateCols[dateCols.length-1]?.date);
+  return parsedCount;
+}
 
 // ============================================================
 // V8.53：从"异常提示"卡片跳转到班表矩阵的具体格子并高亮
@@ -10373,9 +10592,14 @@ function bindUploadEvents(){
       }
 
       _fsShowSyncHint('正在读取数据文件...', 30000);
+      // V9.0：先清除缓存再加载新数据（防止旧数据残留）
+      try{ localStorage.removeItem('bailing_data'); localStorage.removeItem('bailing_schedule'); }catch(e){}
       // 覆盖模式：清空当前数据，全量重建
       App.rawRows=[]; App.nontaskRows=[]; App.utilRows=[];
+      App.dailyData=[]; App.filteredData=[];
       App.scheduleMap={}; App.scheduleMatrix=[];
+      App.ignoredKeys.clear(); App.selectedRowKeys.clear();
+      App.manualRows=[]; App.manualDeletedKeys.clear();
       App.boardInited = false; // 强制重建主看板
 
       const errs=[];
@@ -10395,9 +10619,11 @@ function bindUploadEvents(){
       if(errs.length){
         _fsShowSyncHint('上传完成，' + errs.length + '个文件处理失败', 5000);
       } else {
-        _fsShowSyncHint('上传完成', 3000);
+        _fsShowSyncHint('上传完成，正在同步排班...', 8000);
       }
       this.value='';
+      // 上传后自动同步 Google Sheet 排班
+      try { await syncGoogleSchedule(); } catch(e){ console.warn('[GSheet] 自动同步跳过:', e.message); }
     };
   }
 
@@ -10440,6 +10666,7 @@ function updateFileCards(){
   }
   // 隐藏导航栏的上传按钮区（有数据时才展示工具栏）
   if($('#uploadBtn')) $('#uploadBtn').style.display = hasData ? 'inline-flex' : 'none';
+  if($('#syncGSheetBtn')) $('#syncGSheetBtn').style.display = hasData ? 'inline-flex' : 'none';
 }
 
 // 右上角轻提示（非阻塞，auto-dismiss）
@@ -10560,9 +10787,14 @@ async function _handleLandingUpload(files){
   }
 
   _fsShowSyncHint('正在读取 ' + dataFiles.length + ' 个数据文件...', 30000);
-  // 覆盖模式
+  // V9.0：先清除缓存再加载新数据（防止旧数据残留）
+  try{ localStorage.removeItem('bailing_data'); localStorage.removeItem('bailing_schedule'); }catch(e){}
+  // 覆盖模式：清空所有状态
   App.rawRows=[]; App.nontaskRows=[]; App.utilRows=[];
+  App.dailyData=[]; App.filteredData=[];
   App.scheduleMap={}; App.scheduleMatrix=[];
+  App.ignoredKeys.clear(); App.selectedRowKeys.clear();
+  App.manualRows=[]; App.manualDeletedKeys.clear();
   App.boardInited = false; // 强制重建主看板
 
   const errs=[];
@@ -10583,8 +10815,10 @@ async function _handleLandingUpload(files){
   if(errs.length){
     _fsShowSyncHint('上传完成，' + errs.length + ' 个文件处理失败', 5000);
   } else {
-    _fsShowSyncHint('上传完成，已加载 ' + dataFiles.length + ' 个文件', 3000);
+    _fsShowSyncHint('上传完成，正在同步排班...', 8000);
   }
+  // 上传完成后自动同步 Google Sheet 排班
+  try { await syncGoogleSchedule(); } catch(e){ console.warn('[GSheet] 自动同步跳过:', e.message); }
 }
 
 /** 下载数据模板压缩包（4个示例CSV + 说明文件） */
