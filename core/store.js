@@ -107,4 +107,5 @@
   global.BailingStore = { App, reset, rebuildEmpMaps };
   // 暴露 App 为全局变量，兼容现有代码
   global.App = App;
+// 全量更新 2026-05-27
 })(typeof window !== 'undefined' ? window : this);
