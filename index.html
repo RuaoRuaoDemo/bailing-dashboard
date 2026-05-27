@@ -748,6 +748,26 @@
       width: 100%;
     }
   }
+  /* V9.1：管理看板样式 */
+  .mgr-group-tab { cursor:pointer; transition:all .15s; color:#64748b; }
+  .mgr-group-tab.active { background:#2563eb; color:#fff; }
+  .mgr-group-tab:not(.active):hover { background:#e0e7ff; color:#2563eb; }
+  .mgr-matrix { border-collapse:separate; border-spacing:0; font-size:11px; width:100%; table-layout:auto; }
+  .mgr-matrix th, .mgr-matrix td { padding:6px 8px; text-align:center; border-bottom:1px solid #f1f5f9; border-right:1px solid #f1f5f9; white-space:nowrap; }
+  .mgr-matrix thead th { background:#f8fafc; color:#475569; font-weight:600; position:sticky; top:0; z-index:4; border-bottom:2px solid #e2e8f0; padding:8px 6px; }
+  .mgr-matrix .mgr-section-header { background:#eef2ff; color:#3730a3; font-weight:700; text-align:left; padding:8px 12px; font-size:12px; position:sticky; top:0; z-index:3; border-bottom:2px solid #c7d2fe; }
+  .mgr-matrix .mgr-emp-col { position:sticky; left:0; z-index:5; background:#f8fafc; font-weight:600; color:#1e293b; text-align:left; padding-left:12px; min-width:80px; max-width:120px; box-shadow:2px 0 6px -2px rgba(0,0,0,.08); }
+  .mgr-matrix thead th.mgr-emp-col { z-index:6; background:#f8fafc; }
+  .mgr-matrix .mgr-total-col { background:#f0fdf4; font-weight:700; color:#166534; min-width:50px; }
+  .mgr-matrix tbody tr:hover td { background:#f8fafc; }
+  .mgr-matrix tbody tr:hover .mgr-emp-col { background:#eef2ff; }
+  .mgr-cell-ok { background:#f0fdf4; color:#166534; }
+  .mgr-cell-warn { background:#fef3c7; color:#92400e; }
+  .mgr-cell-bad { background:#fef2f2; color:#dc2626; font-weight:700; }
+  .mgr-cell-rest { background:#f9fafb; color:#9ca3af; }
+  .mgr-cell-shift { font-size:10px; line-height:1.3; }
+  .mgr-cell-positive { color:#16a34a; font-weight:600; }
+  .mgr-cell-negative { color:#dc2626; font-weight:600; }
 </style>
 </head>
 <body class="min-h-screen">
@@ -760,7 +780,8 @@
     </div>
     <nav id="mainNav" class="flex items-center bg-gray-100 rounded-lg p-1 gap-1">
       <button class="nav-btn active px-4 py-1.5 rounded-md text-sm font-medium" data-view="dashboard">📊 主看板</button>
-      <button class="nav-btn px-4 py-1.5 rounded-md text-sm font-medium" data-view="audit">📋 数据&amp;班次详情</button>
+      <button class="nav-btn px-4 py-1.5 rounded-md text-sm font-medium" data-view="manage">📋 管理看板</button>
+      <button class="nav-btn px-4 py-1.5 rounded-md text-sm font-medium" data-view="audit">📂 数据&amp;班次详情</button>
     </nav>
   </div>
 </header>
@@ -881,6 +902,10 @@
         <button id="uploadBtn" onclick="document.getElementById('uploadFilesInput').click()" class="btn btn-primary btn-sm" title="上传 Excel/CSV 数据文件（支持多选）">
           <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12"/></svg>
           上传数据
+        </button>
+        <button id="syncGSheetBtn" onclick="syncGoogleSchedule()" class="btn btn-outline btn-sm" title="从Google Sheet同步排班数据">
+          <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h5M20 20v-5h-5M4 9a9 9 0 0114.85-3.36L20 7M20 15a9 9 0 01-14.85 3.36L4 17"/></svg>
+          同步排班
         </button>
         <button id="downloadBoardBtn" onclick="downloadBoardAsHTML()" class="btn btn-outline btn-sm" title="下载当前看板为独立HTML文件（含数据）">
           <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"/></svg>
@@ -1040,6 +1065,34 @@
     <button id="toggleNtPersonBtn"></button>
   </div>
 
+</div>
+
+<!-- ========== VIEW: Manage (管理看板 — 类Google Sheet矩阵) ========== -->
+<div id="viewManage" class="view-section fade-in">
+  <div class="card p-4 mb-4">
+    <!-- 顶部：组别切换 + 日期筛选 -->
+    <div class="flex flex-wrap items-center justify-between mb-4 gap-3">
+      <div class="flex items-center gap-3">
+        <h3 class="text-base font-bold text-gray-800">管理看板</h3>
+        <div class="flex bg-gray-100 rounded-lg p-0.5 gap-0.5">
+          <button id="mgrTabJL" class="mgr-group-tab active px-3 py-1 rounded-md text-xs font-semibold" onclick="switchMgrGroup('jialan')">嘉兰组</button>
+          <button id="mgrTabH1" class="mgr-group-tab px-3 py-1 rounded-md text-xs font-semibold" onclick="switchMgrGroup('h1')">H1组</button>
+        </div>
+        <span id="mgrPeriodLabel" class="text-xs text-gray-400"></span>
+      </div>
+      <div class="flex items-center gap-2">
+        <input type="date" id="mgrDateFrom" class="text-xs border border-gray-200 rounded-md px-2 py-1" onchange="renderManageBoard()">
+        <span class="text-xs text-gray-400">~</span>
+        <input type="date" id="mgrDateTo" class="text-xs border border-gray-200 rounded-md px-2 py-1" onchange="renderManageBoard()">
+        <button onclick="$('#mgrDateFrom').value='';$('#mgrDateTo').value='';renderManageBoard();" class="btn btn-outline btn-sm" style="padding:3px 8px;font-size:11px;">重置</button>
+      </div>
+    </div>
+
+    <!-- 矩阵区域容器 -->
+    <div id="mgrMatrixWrap" style="overflow-x:auto;overflow-y:auto;max-height:82vh;border:1px solid #e5e7eb;border-radius:10px;background:#fff;">
+      <div id="mgrMatrixContent" class="text-xs"></div>
+    </div>
+  </div>
 </div>
 
 <!-- ========== VIEW: Detail (当天详情) ========== -->
@@ -2513,9 +2566,18 @@ function calcAll() {
 
   // 非任务合并到已存在的工作量行：尝试多种员工标识匹配（英文名/中文名/工号），通过映射表互转
   // V8.32：撤销 V8.32 的"新建行"逻辑（根因在匹配，不在丢弃）。
+  // V9.0：合并前先按 org 过滤掉非目标组织的非任务行，防止同名不同人错误合并
+  const ORG_KEYWORDS_PRE = ['H1组', '嘉兰项目', '嘉兰'];
+  const orgOkPre = (org) => {
+    if (!org) return true;
+    for (const k of ORG_KEYWORDS_PRE) { if (org.indexOf(k) >= 0) return true; }
+    return false;
+  };
   // 添加诊断记录：把匹配失败的非任务行收集到 window._ntUnmatched，供用户诊断查看。
   window._ntUnmatched = [];
   for (const nr of App.nontaskRows) {
+    // V9.0：org 预过滤（排除非目标组织的人）
+    if (nr._org && !orgOkPre(nr._org)) continue;
     const dateStr = nr._dateStr;
     const candidates = new Set();
     candidates.add(makeKey(nr._empEn, nr._emp, nr._uin, dateStr));
@@ -2530,6 +2592,15 @@ function calcAll() {
     let d = null;
     for (const k of candidates) {
       if (dayMap.has(k)) { d = dayMap.get(k); break; }
+    }
+    // V9.0：防止同名不同人的非任务数据错误合并
+    // 如果非任务行有明确的英文名，且匹配到的 dayMap 行也有英文名，两者必须一致
+    if (d && nr._empEn && d.empEn && norm(nr._empEn) !== norm(d.empEn)) {
+      d = null; // 英文名不匹配，拒绝合并
+    }
+    // 同理：如果两者都有 uin，uin 必须一致
+    if (d && nr._uin && d.uin && String(nr._uin).trim() !== String(d.uin).trim()) {
+      d = null;
     }
     if (!d){
       // 诊断：记录匹配失败的行 + 候选键 + 同日期下 dayMap 里实际的 key
@@ -10091,9 +10162,224 @@ function bindSchedImport(){
 }
 
 // ============================================================
-// V9.0：Google Sheet 同步已移除（线上部署不需要）
-// 排班数据改为通过"上传数据"按钮导入 Excel 文件
+// V9.0：Google Sheet 排班同步（恢复）
 // ============================================================
+const GSHEET_CONFIG = {
+  spreadsheetId: '1kfDmcx1irQWKTcjNaUr5-dmQCVgeUkH1YCcAGQvQNRU',
+  sheets: [
+    { prefix: '云雀', periodType: '21to20', org: 'H1组', startCol: 'G', endCol: 'AK' },
+    { prefix: '联营', periodType: '1toEnd', org: '嘉兰项目', startCol: 'G', endCol: 'AK' }
+  ]
+};
+
+/**
+ * 从 Google Sheet 同步排班数据
+ * 使用 JSONP 方式绕过 CORS 限制（file:// 协议下 fetch 无法跨域）
+ * 拉取当月、上月、下月的 sheet 页
+ */
+async function syncGoogleSchedule(){
+  const setStatus = (msg, dur) => { if(typeof _fsShowSyncHint === 'function') _fsShowSyncHint(msg, dur||3000); };
+  setStatus('正在同步Google班表...', 15000);
+
+  try {
+    App._gsheetEmpOrder = []; // 重置排序
+    const now = new Date();
+    const curMonth = now.getMonth() + 1;
+    const curYear = now.getFullYear();
+    // 拉取：上月、当月、下月
+    const monthList = [];
+    const prevMonth = curMonth === 1 ? 12 : curMonth - 1;
+    const nextMonth = curMonth === 12 ? 1 : curMonth + 1;
+    monthList.push(curMonth, prevMonth, nextMonth);
+
+    let totalParsed = 0;
+    const errors = [];
+    const loaded = [];
+
+    for(const sheetCfg of GSHEET_CONFIG.sheets){
+      for(const month of monthList){
+        const sheetName = sheetCfg.prefix + '-' + month + '月排班';
+        try {
+          const count = await _fetchGSheetJSONP(sheetName, curYear, sheetCfg);
+          if(count > 0){
+            totalParsed += count;
+            loaded.push(sheetName);
+          }
+        } catch(e) {
+          if(e.message && e.message.includes('not found')){
+            // sheet不存在，正常跳过
+          } else {
+            console.warn('[GSheet] 拉取失败:', sheetName, e.message);
+            errors.push(sheetName);
+          }
+        }
+      }
+    }
+
+    // 保存 + 渲染
+    if(typeof saveScheduleStorage === 'function') saveScheduleStorage();
+    if(typeof renderScheduleView === 'function') renderScheduleView();
+    if(typeof calcAll === 'function') calcAll();
+    if(typeof renderAll === 'function') renderAll();
+    if(typeof saveToLocalStorage === 'function') saveToLocalStorage();
+
+    if(totalParsed > 0){
+      setStatus('已同步 ' + loaded.length + ' 个排班表', 3000);
+      console.log('[GSheet] 同步完成:', loaded.join(', '));
+    } else if(errors.length) {
+      setStatus('同步失败，请检查网络', 4000);
+    } else {
+      setStatus('未找到排班数据', 3000);
+    }
+  } catch(e) {
+    console.error('[GSheet] 同步异常:', e);
+    setStatus('同步失败：' + (e.message||''), 4000);
+  }
+}
+
+/**
+ * 通过 JSONP 拉取 Google Sheet 数据
+ */
+function _fetchGSheetJSONP(sheetName, baseYear, sheetCfg){
+  return new Promise((resolve, reject) => {
+    const cbName = '_gsCb_' + Date.now() + '_' + Math.random().toString(36).slice(2,8);
+    const timeout = setTimeout(() => {
+      delete window[cbName];
+      if(script.parentNode) script.parentNode.removeChild(script);
+      reject(new Error('timeout'));
+    }, 15000);
+
+    window[cbName] = function(response){
+      clearTimeout(timeout);
+      delete window[cbName];
+      if(script.parentNode) script.parentNode.removeChild(script);
+      if(!response || !response.table){
+        reject(new Error('not found'));
+        return;
+      }
+      try {
+        const count = _parseGSheetAuto(response.table, baseYear, sheetCfg);
+        resolve(count);
+      } catch(e){ reject(e); }
+    };
+
+    const url = 'https://docs.google.com/spreadsheets/d/' + GSHEET_CONFIG.spreadsheetId + '/gviz/tq?tqx=responseHandler:' + cbName + '&sheet=' + encodeURIComponent(sheetName);
+    const script = document.createElement('script');
+    script.src = url;
+    script.onerror = function(){
+      clearTimeout(timeout);
+      delete window[cbName];
+      if(script.parentNode) script.parentNode.removeChild(script);
+      reject(new Error('script load failed'));
+    };
+    document.head.appendChild(script);
+  });
+}
+
+/**
+ * 自动解析 Google Sheet 数据
+ */
+function _parseGSheetAuto(table, baseYear, sheetCfg){
+  if(!table.rows || !table.cols || table.rows.length < 3) return 0;
+
+  const getCell = (row, ci) => {
+    if(!row || !row.c || !row.c[ci]) return '';
+    const c = row.c[ci];
+    return (c.f || (c.v !== null && c.v !== undefined ? String(c.v) : '')).trim();
+  };
+
+  // 1. 找日期行（第一行含"X月Y日"格式的行）
+  let dateRowIdx = -1;
+  let dateStartCol = -1;
+  for(let ri = 0; ri < Math.min(5, table.rows.length); ri++){
+    for(let ci = 0; ci < table.cols.length; ci++){
+      const v = getCell(table.rows[ri], ci);
+      if(/\d{1,2}月\d{1,2}日/.test(v)){
+        dateRowIdx = ri;
+        dateStartCol = ci;
+        break;
+      }
+    }
+    if(dateRowIdx >= 0) break;
+  }
+  if(dateRowIdx < 0 || dateStartCol < 0) return 0;
+
+  // 2. 解析日期列
+  const dateCols = [];
+  for(let ci = dateStartCol; ci < table.cols.length; ci++){
+    const raw = getCell(table.rows[dateRowIdx], ci);
+    const m = raw.match(/(\d{1,2})月(\d{1,2})日/);
+    if(!m) continue;
+    const month = parseInt(m[1]);
+    const day = parseInt(m[2]);
+    let year = baseYear;
+    if(month === 12 && new Date().getMonth() + 1 <= 2) year = baseYear - 1;
+    if(month === 1 && new Date().getMonth() + 1 >= 11) year = baseYear + 1;
+    const isoDate = year + '-' + String(month).padStart(2, '0') + '-' + String(day).padStart(2, '0');
+    dateCols.push({ colIdx: ci, date: isoDate });
+  }
+  if(!dateCols.length) return 0;
+
+  // 3. 构建已知员工名单（从 dailyData/rawRows/utilRows + 白名单）
+  const knownEmps = new Set();
+  if(App.whitelistSet) for(const v of App.whitelistSet) knownEmps.add(v);
+  for(const d of (App.dailyData||[])){ if(d.emp) knownEmps.add(d.emp); if(d.empEn) knownEmps.add(d.empEn); }
+  for(const r of (App.rawRows||[])){ if(r._emp) knownEmps.add(r._emp); if(r._empEn) knownEmps.add(r._empEn); }
+  for(const u of (App.utilRows||[])){ if(u._emp) knownEmps.add(u._emp); if(u._chineseName) knownEmps.add(u._chineseName); }
+  if(App.enToCnMap) for(const [k,v] of App.enToCnMap){ knownEmps.add(k); knownEmps.add(v); }
+
+  const empEnCol = 0; // A列
+  const empCnCol = 1; // B列
+
+  let parsedCount = 0;
+  for(let ri = 0; ri < table.rows.length; ri++){
+    if(ri === dateRowIdx || ri === dateRowIdx + 1) continue;
+    const row = table.rows[ri];
+    const empEn = getCell(row, empEnCol);
+    const empCn = getCell(row, empCnCol);
+    if(!empEn && !empCn) continue;
+    // 只同步已知员工（有数据时过滤；无数据时全部导入）
+    if(knownEmps.size > 0 && !knownEmps.has(empEn) && !knownEmps.has(empCn)) continue;
+    const empName = empCn || empEn;
+
+    // 记录顺序
+    if(!App._gsheetEmpOrder) App._gsheetEmpOrder = [];
+    if(!App._gsheetEmpOrder.includes(empName)) App._gsheetEmpOrder.push(empName);
+
+    // 英中映射
+    if(App.enToCnMap && empEn && empCn) App.enToCnMap.set(empEn, empCn);
+    if(App.empEnMap && empCn && empEn) App.empEnMap.set(empCn, empEn);
+
+    // 读取班次数据
+    for(const dc of dateCols){
+      const codeStr = getCell(row, dc.colIdx);
+      if(!codeStr) continue;
+      const key = empName + '_' + dc.date;
+      const sd = (typeof getShiftDisplay === 'function') ? getShiftDisplay(codeStr) : {label:codeStr,type:'unknown',expectedStd:0};
+      App.scheduleMap[key] = {
+        emp: empName, date: dc.date, code: codeStr,
+        name: sd.label, type: sd.type,
+        expectedStd: sd.expectedStd || 0,
+        source: 'google'
+      };
+      // 英文名也作为key
+      if(empEn){
+        const keyEn = empEn + '_' + dc.date;
+        if(!App.scheduleMap[keyEn]){
+          App.scheduleMap[keyEn] = {
+            emp: empEn, date: dc.date, code: codeStr,
+            name: sd.label, type: sd.type,
+            expectedStd: sd.expectedStd || 0,
+            source: 'google'
+          };
+        }
+      }
+      parsedCount++;
+    }
+  }
+  console.log('[GSheet]', sheetCfg.prefix, '解析完成:', parsedCount, '条, 日期:', dateCols[0]?.date, '~', dateCols[dateCols.length-1]?.date);
+  return parsedCount;
+}
 
 // ============================================================
 // V8.53：从"异常提示"卡片跳转到班表矩阵的具体格子并高亮
@@ -10355,9 +10641,15 @@ function bindUploadEvents(){
       }
 
       _fsShowSyncHint('正在读取数据文件...', 30000);
+      // V9.0：先清除缓存再加载新数据（防止旧数据残留）
+      try{ localStorage.removeItem('bailing_data'); localStorage.removeItem('bailing_schedule'); }catch(e){}
       // 覆盖模式：清空当前数据，全量重建
       App.rawRows=[]; App.nontaskRows=[]; App.utilRows=[];
+      App.dailyData=[]; App.filteredData=[];
       App.scheduleMap={}; App.scheduleMatrix=[];
+      App.ignoredKeys.clear(); App.selectedRowKeys.clear();
+      App.manualRows=[]; App.manualDeletedKeys.clear();
+      App.boardInited = false; // 强制重建主看板
 
       const errs=[];
       for(const f of dataFiles){
@@ -10366,13 +10658,21 @@ function bindUploadEvents(){
       }
 
       updateFileCards();calcAll();renderAll();saveToLocalStorage();
+      // V9.0：上传后强制重设日期范围
+      if($('#boardDateFrom')) $('#boardDateFrom').value = '';
+      if($('#boardDateTo')) $('#boardDateTo').value = '';
+      if(typeof autoSetBoardDateRange === 'function') autoSetBoardDateRange(true);
+      if(typeof renderSummary === 'function') renderSummary();
+      if(typeof renderTrend === 'function') renderTrend();
       
       if(errs.length){
         _fsShowSyncHint('上传完成，' + errs.length + '个文件处理失败', 5000);
       } else {
-        _fsShowSyncHint('上传完成', 3000);
+        _fsShowSyncHint('上传完成，正在同步排班...', 8000);
       }
       this.value='';
+      // 上传后自动同步 Google Sheet 排班
+      try { await syncGoogleSchedule(); } catch(e){ console.warn('[GSheet] 自动同步跳过:', e.message); }
     };
   }
 
@@ -10415,6 +10715,7 @@ function updateFileCards(){
   }
   // 隐藏导航栏的上传按钮区（有数据时才展示工具栏）
   if($('#uploadBtn')) $('#uploadBtn').style.display = hasData ? 'inline-flex' : 'none';
+  if($('#syncGSheetBtn')) $('#syncGSheetBtn').style.display = hasData ? 'inline-flex' : 'none';
 }
 
 // 右上角轻提示（非阻塞，auto-dismiss）
@@ -10535,9 +10836,15 @@ async function _handleLandingUpload(files){
   }
 
   _fsShowSyncHint('正在读取 ' + dataFiles.length + ' 个数据文件...', 30000);
-  // 覆盖模式
+  // V9.0：先清除缓存再加载新数据（防止旧数据残留）
+  try{ localStorage.removeItem('bailing_data'); localStorage.removeItem('bailing_schedule'); }catch(e){}
+  // 覆盖模式：清空所有状态
   App.rawRows=[]; App.nontaskRows=[]; App.utilRows=[];
+  App.dailyData=[]; App.filteredData=[];
   App.scheduleMap={}; App.scheduleMatrix=[];
+  App.ignoredKeys.clear(); App.selectedRowKeys.clear();
+  App.manualRows=[]; App.manualDeletedKeys.clear();
+  App.boardInited = false; // 强制重建主看板
 
   const errs=[];
   for(const f of dataFiles){
@@ -10546,12 +10853,21 @@ async function _handleLandingUpload(files){
   }
 
   updateFileCards(); calcAll(); renderAll(); saveToLocalStorage();
+  // V9.0：上传后强制清空日期输入框，让autoSetBoardDateRange重新计算全范围
+  if($('#boardDateFrom')) $('#boardDateFrom').value = '';
+  if($('#boardDateTo')) $('#boardDateTo').value = '';
+  if(typeof autoSetBoardDateRange === 'function') autoSetBoardDateRange(true);
+  // 重新渲染主看板（使用新日期范围）
+  if(typeof renderSummary === 'function') renderSummary();
+  if(typeof renderTrend === 'function') renderTrend();
 
   if(errs.length){
     _fsShowSyncHint('上传完成，' + errs.length + ' 个文件处理失败', 5000);
   } else {
-    _fsShowSyncHint('上传完成，已加载 ' + dataFiles.length + ' 个文件', 3000);
+    _fsShowSyncHint('上传完成，正在同步排班...', 8000);
   }
+  // 上传完成后自动同步 Google Sheet 排班
+  try { await syncGoogleSchedule(); } catch(e){ console.warn('[GSheet] 自动同步跳过:', e.message); }
 }
 
 /** 下载数据模板压缩包（4个示例CSV + 说明文件） */
@@ -10987,8 +11303,331 @@ function renderPersonSummary(){
 
 
 // ============================================================
-// 导航与初始化
+// V9.1：管理看板（Google Sheet 风格矩阵表）
 // ============================================================
+
+// 当前选中的组别
+var _mgrCurrentGroup = 'jialan'; // 默认嘉兰组
+
+function switchMgrGroup(group){
+  _mgrCurrentGroup = group;
+  document.querySelectorAll('.mgr-group-tab').forEach(b => b.classList.remove('active'));
+  if(group === 'jialan') $('#mgrTabJL')?.classList.add('active');
+  else $('#mgrTabH1')?.classList.add('active');
+  // 切换组时重置日期（让新组使用自己的默认周期）
+  if($('#mgrDateFrom')) $('#mgrDateFrom').value = '';
+  if($('#mgrDateTo')) $('#mgrDateTo').value = '';
+  renderManageBoard();
+}
+
+function renderManageBoard(){
+  const wrap = $('#mgrMatrixContent');
+  if(!wrap) return;
+  if(!App.dailyData || !App.dailyData.length){
+    wrap.innerHTML = '<div style="padding:40px;text-align:center;color:#94a3b8;">请先上传数据</div>';
+    return;
+  }
+
+  // 1. 确定当前组的数据范围
+  const isH1 = _mgrCurrentGroup === 'h1';
+  const orgKeyword = isH1 ? 'H1组' : '嘉兰';
+  const periodType = isH1 ? '21to20' : '1toEnd';
+
+  // 筛选该组的员工
+  const groupData = App.dailyData.filter(d => d.org && d.org.indexOf(orgKeyword) >= 0);
+  if(!groupData.length){
+    wrap.innerHTML = '<div style="padding:40px;text-align:center;color:#94a3b8;">该组无数据</div>';
+    return;
+  }
+
+  // 2. 计算默认日期范围：周期起始 ~ T-1
+  const dr = (typeof calcPeriodDateRange === 'function') ? calcPeriodDateRange(periodType, false) : {from:'',to:''};
+  let defaultFrom = dr.from || '', defaultTo = dr.to || '';
+  // 强制 to 不超过 T-1
+  const yesterday = new Date(); yesterday.setDate(yesterday.getDate()-1);
+  const yStr = yesterday.getFullYear()+'-'+String(yesterday.getMonth()+1).padStart(2,'0')+'-'+String(yesterday.getDate()).padStart(2,'0');
+  if(!defaultTo || defaultTo > yStr) defaultTo = yStr;
+  // 兜底：用数据中实际日期
+  if(!defaultFrom){
+    const allDates = [...new Set(groupData.map(d=>d.date))].sort();
+    defaultFrom = allDates[0]; if(!defaultTo) defaultTo = allDates[allDates.length-1];
+  }
+
+  // 3. 读取用户手选日期（如果有）
+  const userFrom = $('#mgrDateFrom')?.value || '';
+  const userTo = $('#mgrDateTo')?.value || '';
+  const dateFrom = userFrom || defaultFrom;
+  const dateTo = userTo || defaultTo;
+
+  // 设置日期输入框的值（首次渲染时填入默认值）
+  if($('#mgrDateFrom') && !$('#mgrDateFrom').value) $('#mgrDateFrom').value = defaultFrom;
+  if($('#mgrDateTo') && !$('#mgrDateTo').value) $('#mgrDateTo').value = defaultTo;
+
+  // 显示周期标签
+  const periodLabel = isH1 ? 'H1组（21日~20日）' : '嘉兰组（1日~月末）';
+  if($('#mgrPeriodLabel')) $('#mgrPeriodLabel').textContent = periodLabel;
+
+  // 4. 构建日期列表
+  const dates = [];
+  let cur = new Date(dateFrom);
+  const end = new Date(dateTo);
+  while(cur <= end){
+    dates.push(cur.toISOString().slice(0,10));
+    cur.setDate(cur.getDate()+1);
+  }
+  if(!dates.length){
+    wrap.innerHTML = '<div style="padding:40px;text-align:center;color:#94a3b8;">无有效日期范围</div>';
+    return;
+  }
+
+  // 5. 构建员工列表（按班表顺序排列）
+  const empSet = new Set(groupData.map(d=>d.emp));
+  let emps = [...empSet];
+  const gOrder = App._gsheetEmpOrder || [];
+  if(gOrder.length){
+    emps.sort((a,b) => {
+      const ai = gOrder.indexOf(a), bi = gOrder.indexOf(b);
+      return (ai<0?9999:ai) - (bi<0?9999:bi);
+    });
+  } else {
+    emps.sort();
+  }
+
+  // 6. 构建数据查找 Map
+  const dataMap = new Map();
+  for(const d of groupData){
+    dataMap.set(d.emp + '|' + d.date, d);
+  }
+
+  // 7. 格式化日期表头
+  const DOW = ['日','一','二','三','四','五','六'];
+  const fmtDate = (iso) => {
+    const dt = new Date(iso);
+    return { day: dt.getDate(), dow: DOW[dt.getDay()], isWeekend: dt.getDay()===0||dt.getDay()===6 };
+  };
+
+  // 8. 渲染"当日标准条"矩阵
+  const STD_TOLERANCE = 10; // ±5分钟 ≈ ±10标准条
+  // 根据列数动态调整列宽（少列时更宽更美观）
+  const colMinWidth = dates.length <= 10 ? '60px' : dates.length <= 20 ? '48px' : '42px';
+  let html = '';
+
+  html += '<table class="mgr-matrix"><thead><tr>';
+  html += '<th class="mgr-emp-col">员工</th>';
+  for(const iso of dates){
+    const f = fmtDate(iso);
+    const wkStyle = f.isWeekend ? 'color:#ef4444;' : '';
+    html += '<th style="min-width:'+colMinWidth+';'+wkStyle+'"><div>'+f.day+'</div><div style="font-size:9px;color:#94a3b8;">'+f.dow+'</div></th>';
+  }
+  html += '<th class="mgr-total-col">总计</th>';
+  html += '</tr></thead><tbody>';
+
+  for(const emp of emps){
+    html += '<tr>';
+    html += '<td class="mgr-emp-col">' + escHtml(emp) + '</td>';
+    let rowTotal = 0;
+
+    for(const iso of dates){
+      const d = dataMap.get(emp + '|' + iso);
+      const sch = App.scheduleMap[emp + '_' + iso] || null;
+      const expectedStd = sch ? (sch.expectedStd || 0) : 0;
+      const isWorkDay = sch && sch.type !== 'rest' && sch.type !== 'leave' && !/休|假/.test(sch.name||'');
+      const isRestDay = !sch || sch.type === 'rest' || sch.type === 'leave' || /休/.test(sch.name||'');
+
+      let val = d ? (d.totalStd || 0) : 0;
+      rowTotal += val;
+      const valRounded = Math.round(val);
+      let cellStyle = '', cellTitle = '', clickAttr = '';
+
+      if(isRestDay && val > STD_TOLERANCE){
+        // 没上班但有标准条 → 橙色
+        cellStyle = 'background:#fff7ed;color:#c2410c;font-weight:700;border-bottom:2px solid #fb923c;cursor:pointer;';
+        cellTitle = '休息日有' + valRounded + '标准条产出';
+      } else if(isRestDay){
+        cellStyle = 'color:#d1d5db;';
+      } else if(isWorkDay && val < expectedStd - STD_TOLERANCE){
+        // 上班了但标准条不够 → 红色
+        cellStyle = 'background:#fef2f2;color:#dc2626;font-weight:700;border-bottom:2px solid #f87171;cursor:pointer;';
+        cellTitle = '低于应产出' + Math.round(expectedStd - val) + '条';
+      } else if(isWorkDay && val > expectedStd + STD_TOLERANCE){
+        // 超出应产出 → 绿色
+        cellStyle = 'background:#ecfdf5;color:#059669;font-weight:600;cursor:pointer;';
+        cellTitle = '超产' + Math.round(val - expectedStd) + '条';
+      } else if(isWorkDay){
+        // 正常范围
+        cellStyle = 'cursor:pointer;';
+      } else {
+        cellStyle = 'color:#94a3b8;';
+      }
+
+      const cellContent = (isRestDay && val <= 0) ? '-' : String(valRounded);
+      // 工作日都可点击（包括0），休息日有数据也可点击
+      if(isWorkDay || (val > 0)){
+        clickAttr = 'onclick="showMgrStdDetail(\'' + escAttr(emp) + '\',\'' + escAttr(iso) + '\')"';
+        if(!cellStyle.includes('cursor')) cellStyle += 'cursor:pointer;';
+      }
+
+      html += '<td ' + clickAttr + ' style="' + cellStyle + '" title="' + escHtml(cellTitle) + '">' + cellContent + '</td>';
+    }
+
+    // 总计列
+    html += '<td class="mgr-total-col">' + Math.round(rowTotal) + '</td>';
+    html += '</tr>';
+  }
+  html += '</tbody></table>';
+
+  wrap.innerHTML = html;
+}
+
+/** 管理看板：点击标准条单元格弹出详情 */
+function showMgrStdDetail(emp, date){
+  // 查找该员工该天的数据
+  const isH1 = _mgrCurrentGroup === 'h1';
+  const orgKeyword = isH1 ? 'H1组' : '嘉兰';
+  const d = App.dailyData.find(x => x.emp === emp && x.date === date && x.org && x.org.indexOf(orgKeyword)>=0);
+  // 即使没有工作量数据也允许查看（显示班次和应产出信息）
+
+  const sch = App.scheduleMap[emp + '_' + date] || null;
+  const expectedStd = sch ? (sch.expectedStd || 0) : 0;
+  const shiftName = sch ? (sch.name || sch.code || '-') : '无排班';
+  const totalStd = d ? (d.totalStd || 0) : 0;
+
+  // 构建任务明细
+  const rows = d ? (d.rows || []) : [];
+  const workRows = rows.filter(r => !r._isNontask);
+  const ntRows = rows.filter(r => r._isNontask);
+
+  let detailHtml = '<div style="max-width:640px;margin:0 auto;">';
+
+  // 顶部概览卡
+  const diff = Math.round(totalStd - expectedStd);
+  const diffColor = diff > 10 ? '#166534' : diff < -10 ? '#dc2626' : '#475569';
+  const diffBg = diff < -10 ? '#fef2f2' : diff > 10 ? '#ecfdf5' : '#f8fafc';
+  detailHtml += '<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-bottom:14px;">';
+  detailHtml += '<div style="background:#f0f9ff;padding:10px;border-radius:8px;text-align:center;"><div style="font-size:10px;color:#64748b;">当日标准条</div><div style="font-size:18px;font-weight:700;color:#1e40af;">'+Math.round(totalStd)+'</div></div>';
+  detailHtml += '<div style="background:#f0fdf4;padding:10px;border-radius:8px;text-align:center;"><div style="font-size:10px;color:#64748b;">应产出</div><div style="font-size:18px;font-weight:700;color:#166534;">'+expectedStd+'</div></div>';
+  detailHtml += '<div style="background:'+diffBg+';padding:10px;border-radius:8px;text-align:center;"><div style="font-size:10px;color:#64748b;">差值</div><div style="font-size:18px;font-weight:700;color:'+diffColor+';">'+(diff>0?'+':'')+diff+'</div></div>';
+  detailHtml += '</div>';
+
+  // 班次信息
+  detailHtml += '<div style="background:#f8fafc;padding:8px 12px;border-radius:6px;margin-bottom:14px;display:flex;justify-content:space-between;align-items:center;">';
+  detailHtml += '<span style="font-size:11px;color:#64748b;">班次：<b style="color:#1e293b;">'+escHtml(shiftName)+'</b></span>';
+  detailHtml += '<span style="font-size:11px;color:#64748b;">日期：<b style="color:#1e293b;">'+date+'</b></span>';
+  detailHtml += '</div>';
+
+  if(!rows.length){
+    // 无任何提报记录
+    detailHtml += '<div style="padding:24px;text-align:center;color:#94a3b8;font-size:12px;background:#f9fafb;border-radius:8px;margin-top:8px;">当日无提报记录</div>';
+  } else {
+  // 统一明细表（审核+计时+非任务合在一起）
+  detailHtml += '<table style="width:100%;border-collapse:collapse;font-size:11px;">';
+  detailHtml += '<thead><tr style="background:#f1f5f9;">';
+  detailHtml += '<th style="padding:6px 8px;text-align:left;">类型</th>';
+  detailHtml += '<th style="padding:6px 8px;text-align:left;">渠道/任务</th>';
+  detailHtml += '<th style="padding:6px 8px;text-align:right;">效能</th>';
+  detailHtml += '<th style="padding:6px 8px;text-align:right;">量级(条)</th>';
+  detailHtml += '<th style="padding:6px 8px;text-align:right;">时长</th>';
+  detailHtml += '<th style="padding:6px 8px;text-align:right;">标准条</th>';
+  detailHtml += '</tr></thead><tbody>';
+
+  // 审核类行
+  for(const r of workRows){
+    const taskName = (r._task || '未知任务').substring(0, 24);
+    const eff = r._eff || 0;
+    const tong = r._tong || 0;
+    const nontong = r._nontong || 0;
+    const minutes = r._minutes || 0;
+    const std = Math.round(r.totalStd || 0);
+    const qty = tong + nontong;
+    // 判断类型：计时 / 通航 / 非通航
+    const isTimingOnly = (tong === 0 && nontong === 0 && minutes > 0);
+    let typeBadge;
+    if(isTimingOnly){
+      typeBadge = '<span style="background:#dbeafe;color:#1e40af;padding:1px 5px;border-radius:3px;font-size:9px;font-weight:600;">计时</span>';
+    } else if(tong > 0 && nontong === 0){
+      typeBadge = '<span style="background:#ccfbf1;color:#0f766e;padding:1px 5px;border-radius:3px;font-size:9px;font-weight:600;">通航</span>';
+    } else if(nontong > 0 && tong === 0){
+      typeBadge = '<span style="background:#e0e7ff;color:#4338ca;padding:1px 5px;border-radius:3px;font-size:9px;font-weight:600;">非通航</span>';
+    } else if(tong > 0 && nontong > 0){
+      typeBadge = '<span style="background:#ccfbf1;color:#0f766e;padding:1px 5px;border-radius:3px;font-size:9px;font-weight:600;">通航+非通航</span>';
+    } else {
+      typeBadge = '<span style="background:#f1f5f9;color:#64748b;padding:1px 5px;border-radius:3px;font-size:9px;font-weight:600;">审核</span>';
+    }
+    const timeStr = minutes > 0 ? (minutes/60).toFixed(1)+'h' : '-';
+    detailHtml += '<tr style="border-bottom:1px solid #f1f5f9;">';
+    detailHtml += '<td style="padding:5px 8px;">'+typeBadge+'</td>';
+    detailHtml += '<td style="padding:5px 8px;color:#1e293b;">'+escHtml(taskName)+'</td>';
+    detailHtml += '<td style="padding:5px 8px;text-align:right;color:#6366f1;">'+(eff>0?eff.toFixed(1):'-')+'</td>';
+    detailHtml += '<td style="padding:5px 8px;text-align:right;color:#0891b2;">'+(qty>0?qty:'-')+'</td>';
+    detailHtml += '<td style="padding:5px 8px;text-align:right;color:#64748b;">'+timeStr+'</td>';
+    detailHtml += '<td style="padding:5px 8px;text-align:right;font-weight:600;color:#1e293b;">'+std+'</td>';
+    detailHtml += '</tr>';
+  }
+
+  // 非任务行
+  for(const nr of ntRows){
+    const ntName = (nr._task || '未知').substring(0, 24);
+    const ntMin = nr._minutes || 0;
+    const ntStd = Math.round(nr.totalStd || 0);
+    detailHtml += '<tr style="border-bottom:1px solid #fef3c7;background:#fffbeb;">';
+    detailHtml += '<td style="padding:5px 8px;"><span style="background:#fef3c7;color:#92400e;padding:1px 5px;border-radius:3px;font-size:9px;font-weight:600;">非任务</span></td>';
+    detailHtml += '<td style="padding:5px 8px;color:#92400e;">'+escHtml(ntName)+'</td>';
+    detailHtml += '<td style="padding:5px 8px;text-align:right;color:#94a3b8;">-</td>';
+    detailHtml += '<td style="padding:5px 8px;text-align:right;color:#94a3b8;">-</td>';
+    detailHtml += '<td style="padding:5px 8px;text-align:right;color:#92400e;">'+Math.round(ntMin)+'分</td>';
+    detailHtml += '<td style="padding:5px 8px;text-align:right;font-weight:600;color:#92400e;">'+ntStd+'</td>';
+    detailHtml += '</tr>';
+  }
+
+  // 合计行（包含所有：审核+计时+非任务）
+  const allTong = workRows.reduce((s,r)=>s+(r._tong||0),0);
+  const allNontong = workRows.reduce((s,r)=>s+(r._nontong||0),0);
+  const allQty = allTong + allNontong;
+  const allMinutes = rows.reduce((s,r)=>s+(r._minutes||0),0);
+  const allStd = Math.round(totalStd);
+  detailHtml += '<tr style="background:#f1f5f9;font-weight:700;border-top:2px solid #e2e8f0;">';
+  detailHtml += '<td style="padding:6px 8px;" colspan="2">合计</td>';
+  detailHtml += '<td style="padding:6px 8px;text-align:right;">-</td>';
+  detailHtml += '<td style="padding:6px 8px;text-align:right;">'+allQty+'</td>';
+  detailHtml += '<td style="padding:6px 8px;text-align:right;">'+(allMinutes/60).toFixed(1)+'h</td>';
+  detailHtml += '<td style="padding:6px 8px;text-align:right;font-size:13px;color:#1e40af;">'+allStd+'</td>';
+  detailHtml += '</tr>';
+
+  detailHtml += '</tbody></table>';
+  } // end if(rows.length)
+
+  // "查看详情"跳转按钮
+  detailHtml += '<div style="text-align:center;margin-top:16px;padding-top:12px;border-top:1px solid #f1f5f9;">';
+  detailHtml += '<button onclick="document.getElementById(\'mgrDetailModal\').style.display=\'none\';openDetail(\'' + escAttr(emp) + '\',\'' + escAttr(date) + '\')" style="background:#2563eb;color:#fff;border:none;padding:8px 20px;border-radius:8px;font-size:12px;font-weight:600;cursor:pointer;transition:all .15s;" onmouseover="this.style.background=\'#1d4ed8\'" onmouseout="this.style.background=\'#2563eb\'">查看完整详情 →</button>';
+  detailHtml += '</div>';
+
+  detailHtml += '</div>';
+
+  // 弹出 Modal
+  _showMgrModal(emp + ' · ' + date + ' 量级详情', detailHtml);
+}
+
+/** 管理看板通用Modal */
+function _showMgrModal(title, bodyHtml){
+  let modal = document.getElementById('mgrDetailModal');
+  if(!modal){
+    modal = document.createElement('div');
+    modal.id = 'mgrDetailModal';
+    modal.style.cssText = 'position:fixed;inset:0;z-index:9990;display:flex;align-items:center;justify-content:center;background:rgba(15,23,42,0.4);backdrop-filter:blur(2px);';
+    modal.onclick = function(e){ if(e.target===this) this.style.display='none'; };
+    document.body.appendChild(modal);
+  }
+  modal.innerHTML = '<div style="background:#fff;border-radius:14px;box-shadow:0 20px 60px rgba(0,0,0,0.15);max-width:680px;width:92%;max-height:85vh;overflow-y:auto;padding:24px;">'
+    + '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;">'
+    + '<h3 style="font-size:14px;font-weight:700;color:#1e293b;">'+escHtml(title)+'</h3>'
+    + '<button onclick="document.getElementById(\'mgrDetailModal\').style.display=\'none\'" style="border:none;background:#f1f5f9;width:28px;height:28px;border-radius:6px;cursor:pointer;font-size:14px;color:#475569;display:flex;align-items:center;justify-content:center;">✕</button>'
+    + '</div>'
+    + bodyHtml
+    + '</div>';
+  modal.style.display = 'flex';
+}
+
+
 function showView(name){
   document.querySelectorAll('.view-section').forEach(el=>{el.classList.remove('active');el.setAttribute('aria-hidden','true');});
   document.querySelectorAll('.nav-btn').forEach(b=>b.classList.remove('active'));
@@ -11015,6 +11654,11 @@ function showView(name){
     const v=$('#viewAudit');if(v){v.classList.add('active');v.setAttribute('aria-hidden','false');}
     document.querySelector('[data-view="audit"]')?.classList.add('active');
     switchAuditSubTab('schedule');
+  }
+  if(name==='manage'){
+    const v=$('#viewManage');if(v){v.classList.add('active');v.setAttribute('aria-hidden','false');}
+    document.querySelector('[data-view="manage"]')?.classList.add('active');
+    renderManageBoard();
   }
   window.scrollTo(0,0);
 }
@@ -11127,7 +11771,7 @@ bindUploadEvents();
 // 初始强制只显示主看板，其他视图隐藏
 showView('dashboard');
 
-document.querySelectorAll('.nav-btn').forEach(btn=>{btn.onclick=function(){const v=this.dataset.view;if(v==='audit'||v==='schedule')showView(v);else showView('dashboard');};});
+document.querySelectorAll('.nav-btn').forEach(btn=>{btn.onclick=function(){const v=this.dataset.view;if(v==='audit'||v==='schedule'||v==='manage')showView(v);else showView('dashboard');};});
 
 loadFromLocalStorage();
 // V8.32：诊断日志 —— 明确打印从 localStorage 加载后的数据状态
@@ -11266,6 +11910,10 @@ try {
     // 每日汇总页筛选
     tryAttach('#filterDateFrom','#filterDateTo', function(){
       if(typeof applyFilters==='function') applyFilters();
+    });
+    // 管理看板日期筛选
+    tryAttach('#mgrDateFrom','#mgrDateTo', function(){
+      if(typeof renderManageBoard==='function') renderManageBoard();
     });
   }
   // 初始化 + 动态内容出现时再跑（异常筛选 Modal 等）
