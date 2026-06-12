@@ -2557,7 +2557,13 @@ function calcAll() {
   for (const r of App.rawRows) {
     const cr = calcRow(r);
     const key = makeKey(cr._empEn, cr._emp, cr._uin, cr._dateStr);
-    if (!dayMap.has(key)) dayMap.set(key,{emp:cr._emp||cr._empEn||cr._uin, empEn:cr._empEn||'', uin:cr._uin||'', org:cr._org, date:cr._dateStr,tongStd:0,tong3Std:0,nontongStd:0,meterStd:0,timingStd:0,nontaskStd:0,totalStd:0,rows:[]});
+    if (!dayMap.has(key)) {
+      // V9.1：emp 优先用中文名，若空则通过映射表反查
+      let empName = cr._emp;
+      if (!empName && cr._empEn) empName = App.enToCnMap.get(cr._empEn) || cr._empEn;
+      if (!empName && cr._uin) empName = App.uinToEmpMap.get(cr._uin) || cr._uin;
+      dayMap.set(key, {emp: empName, empEn: cr._empEn || '', uin: cr._uin || '', org: cr._org, date: cr._dateStr, tongStd: 0, tong3Std: 0, nontongStd: 0, meterStd: 0, timingStd: 0, nontaskStd: 0, totalStd: 0, rows: []});
+    }
     const d=dayMap.get(key);
     d.tongStd+=cr.tongStd;d.tong3Std+=cr.tong3Std;d.nontongStd+=cr.nontongStd;
     d.meterStd+=cr.meterStd;d.timingStd+=cr.timingStd;d.totalStd+=cr.totalStd;
@@ -2603,19 +2609,28 @@ function calcAll() {
       d = null;
     }
     if (!d){
-      // 诊断：记录匹配失败的行 + 候选键 + 同日期下 dayMap 里实际的 key
-      if(window._ntUnmatched.length < 20){
-        var dayKeysSample = [];
-        for(const k of dayMap.keys()){
-          if(k.endsWith('|'+dateStr)) dayKeysSample.push(k);
-        }
+      // V9.1：员工某天只有非任务、没有工作量时，不应丢弃——新建 dayMap 条目
+      // 优先用中文名作为 emp，其次英文，再次工号
+      let empName = nr._emp || (nr._empEn && App.enToCnMap.get(nr._empEn)) || nr._empEn || nr._uin || '';
+      // 若 empName 仍是英文名（无中文映射），再尝试 uin 反查
+      if (empName && !/[\u4e00-\u9fa5]/.test(empName) && nr._uin && App.uinToEmpMap.has(nr._uin)) {
+        const fromUin = App.uinToEmpMap.get(nr._uin);
+        if (fromUin && /[\u4e00-\u9fa5]/.test(fromUin)) empName = fromUin;
+      }
+      const newKey = makeKey(nr._empEn, nr._emp, nr._uin, dateStr);
+      d = {
+        emp: empName, empEn: nr._empEn || '', uin: nr._uin || '', org: nr._org || '',
+        date: dateStr, tongStd: 0, tong3Std: 0, nontongStd: 0, meterStd: 0, timingStd: 0,
+        nontaskStd: 0, totalStd: 0, rows: []
+      };
+      dayMap.set(newKey, d);
+      // 诊断日志（降级为 info，因为这不是错误）
+      if (window._ntUnmatched.length < 20) {
         window._ntUnmatched.push({
           nr_emp: nr._emp, nr_empEn: nr._empEn, nr_uin: nr._uin, nr_date: dateStr,
-          candidates: Array.from(candidates),
-          dayKeys_sameDate: dayKeysSample.slice(0, 8)
+          note: '新建行（该日无工作量数据）', created: true
         });
       }
-      continue;
     }
     const nts = nr._minutes/60*125;
     d.nontaskStd+=nts; d.totalStd+=nts;
@@ -7932,7 +7947,15 @@ function renderDetailPeriod(emp){
   let pTo = ($('#detailPeriodTo') && $('#detailPeriodTo').value) || '';
   if(!pFrom) pFrom = ($('#boardDateFrom') && $('#boardDateFrom').value) || '';
   if(!pTo) pTo = ($('#boardDateTo') && $('#boardDateTo').value) || '';
-  let empData=App.dailyData.filter(d=>d.emp===emp||d.empEn===emp||d.uin===emp);
+  let empData=App.dailyData.filter(d=>{
+    if(d.emp===emp||d.empEn===emp||d.uin===emp) return true;
+    // V9.1：反查映射，支持中文名匹配到英文名记录
+    if(emp && /[\u4e00-\u9fa5]/.test(emp)){
+      if(d.empEn && App.enToCnMap.get(d.empEn)===emp) return true;
+      if(d.uin && App.uinToEmpMap.get(d.uin)===emp) return true;
+    }
+    return false;
+  });
   if(pFrom) empData = empData.filter(d => d.date >= pFrom);
   if(pTo) empData = empData.filter(d => d.date <= pTo);
   var empGroup=getEmpGroup(emp);
@@ -11153,7 +11176,14 @@ function renderPersonSummary(){
 
   const empMap = {};
   for(const d of data){
-    const emp = d.emp || d.empEn || d.uin || '?';
+    let emp = d.emp || d.empEn || d.uin || '?';
+    // V9.1：若 emp 是英文名（非中文），尝试反查中文名用于显示和聚合
+    let displayEmp = emp;
+    if (emp && !/[\u4e00-\u9fa5]/.test(emp)) {
+      const cn = App.enToCnMap.get(emp) || App.uinToEmpMap.get(d.uin || emp);
+      if (cn && /[\u4e00-\u9fa5]/.test(cn)) displayEmp = cn;
+    }
+    emp = displayEmp;
     if(!empMap[emp]) empMap[emp] = { emp, days: new Set(), totalStd:0, tongStd:0, nontongStd:0, timingStd:0, nontaskStd:0, utilSum:0, utilCount:0 };
     const e = empMap[emp];
     e.days.add(d.date);
@@ -11172,7 +11202,13 @@ function renderPersonSummary(){
     const empDailyInfo = [];
     for(const d of data){
       const dk = (d.emp||d.empEn||d.uin||'');
-      if(dk === emp) empDailyInfo.push(d);
+      // V9.1：若 dk 是英文名/工号，反查中文名后匹配聚合键
+      let dkMatch = (dk === emp);
+      if (!dkMatch && dk && !/[\u4e00-\u9fa5]/.test(dk)) {
+        const dkCn = App.enToCnMap.get(dk) || App.uinToEmpMap.get(d.uin || dk);
+        if (dkCn === emp) dkMatch = true;
+      }
+      if(dkMatch) empDailyInfo.push(d);
     }
     for(const d of empDailyInfo){
       const dateKey = d.date;
@@ -11429,7 +11465,11 @@ function renderManageBoard(){
 
     for(const iso of dates){
       const d = dataMap.get(emp + '|' + iso);
-      const sch = App.scheduleMap[emp + '_' + iso] || null;
+      let sch = App.scheduleMap[emp + '_' + iso] || null;
+      // V9.1：若排班表用英文名键，尝试通过映射反查
+      if(!sch && App.empEnMap && App.empEnMap.has(emp)){
+        sch = App.scheduleMap[App.empEnMap.get(emp) + '_' + iso] || null;
+      }
       const expectedStd = sch ? (sch.expectedStd || 0) : 0;
       const isWorkDay = sch && sch.type !== 'rest' && sch.type !== 'leave' && !/休|假/.test(sch.name||'');
       const isRestDay = !sch || sch.type === 'rest' || sch.type === 'leave' || /休/.test(sch.name||'');
