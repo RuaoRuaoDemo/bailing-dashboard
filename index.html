@@ -1509,9 +1509,34 @@ const App = (function(){
     return store;
   }
   // 没有 BailingStore 时用默认值，并挂到 window 上
-  if (typeof window !== 'undefined') window.App = __defaultApp;
+    if (typeof window !== 'undefined') window.App = __defaultApp;
   return __defaultApp;
 })();
+
+// V9.2：全局白名单（英文名→中文名），供 calcAll 和 _parseGSheetAuto 共用
+App.scheduleWhitelist = {
+  'xiaoranchen':'陈晓冉','kxhwang':'王敬凯','fannyffchen':'陈菲菲','arsjia':'贾振',
+  'starryli':'李琦','mrjfchen':'陈建飞','kimshhan':'韩帅恒','avaniu':'牛雅琳',
+  'allenldu':'杜磊','zihanhe':'何子涵','longnie':'聂聪','sarageng':'耿玉涵',
+  'lolishen':'申英洁','harryyxli':'李阳旭','goodlu':'路畅','armnzhang':'张永奇',
+  'ladyjia':'贾可杰','ly-zhangzhanshuai':'张占帅','ly-yanxiaojing':'闫晓睛',
+  'ly-caoshuaichao':'曹帅超','ly-wangshuaihan':'王帅函','ly-yaozechao':'姚泽超',
+  'ly-niushaoran':'牛少冉','ly-mayufei':'马宇飞','ly-wangxiaoke':'王笑柯',
+  'ly-yinwenshe':'尹文社','ly-zhangyang-001':'张洋','ly-zhangjiaohao-002':'张家豪',
+  'ly-qishijia-001':'齐世嘉','ly-zhangkuan':'张宽','ly-liwenxuan-001':'李文轩',
+  'ly-yanghongze':'杨鸿泽','ly-yuzeyang':'于泽洋','ly-dudongkai':'杜东凯',
+  'ly-sunbin':'孙斌','ly-jinxueqi':'靳雪齐','ly-yanpinyi-001':'闫品一',
+  'ly-houjiangbao-001':'侯江保','zhangyu1':'张宇','xkbchenyigeng':'陈一庚',
+  'xkbwangyu':'王宇','ly-wangpengfei':'王鹏飞','ly-xiaoziyi':'肖子仪',
+  'changziying':'常紫盈','A10':'李亚帆','ly-zhangtao':'张涛','ly-lihaoyu':'李浩宇',
+  'ly-fangziming':'房子鸣','ly-lizihao-003':'李子豪','ly-fanhuiyang':'范会洋',
+  'ly-lizitong':'李紫彤','ly-lijinyu-001':'李金宇','ly-zhangyihan':'张依寒'
+};
+App.whitelistSet = new Set();
+for (const en in App.scheduleWhitelist) {
+  App.whitelistSet.add(en);
+  App.whitelistSet.add(App.scheduleWhitelist[en]);
+}
 
 // ============================================================
 // 安全辅助函数（XSS防护）
@@ -2644,33 +2669,8 @@ function calcAll() {
 
   // V8.92：严格白名单过滤（权威来源：排班表英文名→中文名映射）
   // 只有排班表里的人才能出现在系统里，防止同名不同人污染数据
-  const SCHEDULE_EMP_WHITELIST = {
-    'xiaoranchen':'陈晓冉','kxhwang':'王敬凯','fannyffchen':'陈菲菲','arsjia':'贾振',
-    'starryli':'李琦','mrjfchen':'陈建飞','kimshhan':'韩帅恒','avaniu':'牛雅琳',
-    'allenldu':'杜磊','zihanhe':'何子涵','longnie':'聂聪','sarageng':'耿玉涵',
-    'lolishen':'申英洁','harryyxli':'李阳旭','goodlu':'路畅','armnzhang':'张永奇',
-    'ladyjia':'贾可杰','ly-zhangzhanshuai':'张占帅','ly-yanxiaojing':'闫晓睛',
-    'ly-caoshuaichao':'曹帅超','ly-wangshuaihan':'王帅函','ly-yaozechao':'姚泽超',
-    'ly-niushaoran':'牛少冉','ly-mayufei':'马宇飞','ly-wangxiaoke':'王笑柯',
-    'ly-yinwenshe':'尹文社','ly-zhangyang-001':'张洋','ly-zhangjiahao-002':'张家豪',
-    'ly-qishijia-001':'齐世嘉','ly-zhangkuan':'张宽','ly-liwenxuan-001':'李文轩',
-    'ly-yanghongze':'杨鸿泽','ly-yuzeyang':'于泽洋','ly-dudongkai':'杜东凯',
-    'ly-sunbin':'孙斌','ly-jinxueqi':'靳雪齐','ly-yanpinyi-001':'闫品一',
-    'ly-houjiangbao-001':'侯江保','zhangyu1':'张宇','xkbchenyigeng':'陈一庚',
-    'xkbwangyu':'王宇','ly-wangpengfei':'王鹏飞','ly-xiaoziyi':'肖子仪',
-    'changziying':'常紫盈','A10':'李亚帆','ly-zhangtao':'张涛','ly-lihaoyu':'李浩宇',
-    'ly-fangziming':'房子鸣','ly-lizihao-003':'李子豪','ly-fanhuiyang':'范会洋',
-    'ly-lizitong':'李紫彤','ly-lijinyu-001':'李金宇','ly-zhangyihan':'张依寒'
-  };
-  // 构建白名单 Set（英文名 + 中文名都加入）
-  const whitelistSet = new Set();
-  for (const en in SCHEDULE_EMP_WHITELIST) {
-    whitelistSet.add(en);
-    whitelistSet.add(SCHEDULE_EMP_WHITELIST[en]);
-  }
-  // 暴露到 App 供其他模块使用
-  App.scheduleWhitelist = SCHEDULE_EMP_WHITELIST;
-  App.whitelistSet = whitelistSet;
+  // V9.2：改用全局白名单（已在 script 顶部初始化）
+  const whitelistSet = App.whitelistSet;
 
   const isWhitelisted = (d) => {
     return whitelistSet.has(d.emp) || whitelistSet.has(d.empEn) || whitelistSet.has(d.uin);
@@ -9750,8 +9750,19 @@ function renderScheduleView(){
   var curVal=empSel?empSel.value:'';
   var empSet=new Set(App.dailyData.map(function(d){return d.emp;}));
   var schedEntries=Object.values(App.scheduleMap);
-  for(var sei=0;sei<schedEntries.length;sei++){empSet.add(schedEntries[sei].emp);}
-  var emps=Array.from(empSet).filter(Boolean).sort();
+  // V9.2：scheduleMap 中的 emp 可能是英文名，需映射到中文名再入集合
+  for(var sei=0;sei<schedEntries.length;sei++){
+    var e = schedEntries[sei];
+    var displayEmp = e.emp || '';
+    // 如果是纯英文名，尝试映射为中文名
+    if(/^[a-zA-Z0-9._\-]+$/.test(displayEmp)){
+      if(App.enToCnMap && App.enToCnMap.has(displayEmp)) displayEmp = App.enToCnMap.get(displayEmp);
+      else if(App.scheduleWhitelist && App.scheduleWhitelist[displayEmp]) displayEmp = App.scheduleWhitelist[displayEmp];
+      else continue; // 实在映射不到，跳过
+    }
+    empSet.add(displayEmp);
+  }
+  var emps=Array.from(empSet).filter(function(v){return v && /[\u4e00-\u9fa5]/.test(v);}).sort();
   if(empSel){
     empSel.innerHTML='<option value="">全部员工</option>'+emps.map(function(e){return '<option value="'+escAttr(e)+'">'+escHtml(e)+'</option>';}).join('');
     empSel.value=curVal;
@@ -10363,15 +10374,23 @@ function _parseGSheetAuto(table, baseYear, sheetCfg){
     if(!empEn && !empCn) continue;
     // 只同步已知员工（有数据时过滤；无数据时全部导入）
     if(knownEmps.size > 0 && !knownEmps.has(empEn) && !knownEmps.has(empCn)) continue;
-    const empName = empCn || empEn;
+    // V9.2：empName 必须是中国名；多级回退，实在找不到才跳过
+    let empName = empCn || '';
+    if(!empName && empEn && App.enToCnMap && App.enToCnMap.has(empEn)){
+      empName = App.enToCnMap.get(empEn);
+    }
+    if(!empName && empEn && App.scheduleWhitelist && App.scheduleWhitelist[empEn]){
+      empName = App.scheduleWhitelist[empEn];
+    }
+    if(!empName) continue; // 实在无法确定中文名，跳过该行
 
-    // 记录顺序
+    // 记录顺序（只用中文名）
     if(!App._gsheetEmpOrder) App._gsheetEmpOrder = [];
     if(!App._gsheetEmpOrder.includes(empName)) App._gsheetEmpOrder.push(empName);
 
-    // 英中映射
-    if(App.enToCnMap && empEn && empCn) App.enToCnMap.set(empEn, empCn);
-    if(App.empEnMap && empCn && empEn) App.empEnMap.set(empCn, empEn);
+    // 英中映射（确保双向都有）
+    if(empEn && empName && App.enToCnMap) App.enToCnMap.set(empEn, empName);
+    if(empEn && empName && App.empEnMap) App.empEnMap.set(empName, empEn);
 
     // 读取班次数据
     for(const dc of dateCols){
@@ -10385,12 +10404,12 @@ function _parseGSheetAuto(table, baseYear, sheetCfg){
         expectedStd: sd.expectedStd || 0,
         source: 'google'
       };
-      // 英文名也作为key
-      if(empEn){
+      // 英文名也作为key（方便匹配），但 emp 字段仍用中文名
+      if(empEn && empName){
         const keyEn = empEn + '_' + dc.date;
         if(!App.scheduleMap[keyEn]){
           App.scheduleMap[keyEn] = {
-            emp: empEn, date: dc.date, code: codeStr,
+            emp: empName, date: dc.date, code: codeStr,
             name: sd.label, type: sd.type,
             expectedStd: sd.expectedStd || 0,
             source: 'google'
