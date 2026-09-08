@@ -1,4 +1,18 @@
-<!-- Bailing Dashboard V9.0 - 20260521 - 上传模式+下载离线版 -->
+<!-- Bailing Dashboard V9.8 - 20260831 - 上传模式+下载离线版 -->
+<!--
+  ===== 近期版本变更 =====
+  V9.5.2 (2026-08-31) 修复「非任务工时统计」被误判成异常表导致 DIY 非任务无数据；
+                      修复「班次内/班次外」异常盘点表被误判成排班表；
+                      修正 utilRows 中/英文名不对称导致丢人；新增出勤无产量/无数据补行注入
+  V9.6   (2026-08-31) 暂离 + 工时利用率分级配色并显示单位、异常加 ⚠；
+                      DIY 编辑器支持改公式 / 改单位 / 多表多列多选 / 实时预览；
+                      DIY 与主看板项目分组联动（项目 tabs，跳转只带当前项目）
+  V9.7   (2026-08-31) DIY 数据源新增 4 张异常盘点表 + 暂离原始行；
+                      数据预览区加高、支持横向滚动查看全部列
+  V9.8   (2026-08-31) 修复非任务指标恒为 0（nontaskMap 改为 row-like 对象）；
+                      预设指标改为「非任务标准条(时长)」按小时展示；
+                      DIY 配置卡片放大操作按钮、编辑态切数据源保留已选字段
+-->
 <!DOCTYPE html>
 <html lang="zh-CN">
 <head>
@@ -8,7 +22,7 @@
 <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
 <meta http-equiv="Pragma" content="no-cache">
 <meta http-equiv="Expires" content="0">
-<title>百灵工作量仪表盘 V9.0</title>
+<title>百灵工作量仪表盘 V9.8</title>
 <link rel="stylesheet" href="vendor/tailwind.min.css">
 <script src="vendor/chart.umd.min.js"></script>
 <script src="vendor/xlsx.full.min.js"></script>
@@ -781,6 +795,7 @@
     <nav id="mainNav" class="flex items-center bg-gray-100 rounded-lg p-1 gap-1">
       <button class="nav-btn active px-4 py-1.5 rounded-md text-sm font-medium" data-view="dashboard">📊 主看板</button>
       <button class="nav-btn px-4 py-1.5 rounded-md text-sm font-medium" data-view="manage">📋 管理看板</button>
+      <button class="nav-btn px-4 py-1.5 rounded-md text-sm font-medium" data-view="diy">🧩 DIY看板</button>
       <button class="nav-btn px-4 py-1.5 rounded-md text-sm font-medium" data-view="audit">📂 数据&amp;班次详情</button>
     </nav>
   </div>
@@ -1101,6 +1116,14 @@
         </div>
         <span id="mgrPeriodLabel" class="text-xs text-gray-400"></span>
       </div>
+      <!-- V9.4：异常阈值设置（可配置） -->
+      <div class="flex items-center gap-2 flex-wrap">
+        <span class="text-xs text-gray-500 font-semibold">异常阈值：</span>
+        <label class="text-xs text-gray-500">暂离总时长&gt;<input type="number" id="cfgZanliTotal" class="w-12 border border-gray-200 rounded px-1 py-0.5 text-center" style="font-size:11px;">min</label>
+        <label class="text-xs text-gray-500">单次&gt;<input type="number" id="cfgZanliSingle" class="w-12 border border-gray-200 rounded px-1 py-0.5 text-center" style="font-size:11px;">min</label>
+        <label class="text-xs text-gray-500">利用率缺口&gt;<input type="number" id="cfgUtilGap" class="w-12 border border-gray-200 rounded px-1 py-0.5 text-center" style="font-size:11px;">h</label>
+        <button onclick="applyAnomalyConfig()" class="btn btn-outline btn-sm" style="padding:3px 8px;font-size:11px;">应用</button>
+      </div>
       <div class="flex items-center gap-2">
         <input type="date" id="mgrDateFrom" class="text-xs border border-gray-200 rounded-md px-2 py-1" onchange="renderManageBoard()">
         <span class="text-xs text-gray-400">~</span>
@@ -1116,7 +1139,124 @@
   </div>
 </div>
 
-<!-- ========== VIEW: Detail (当天详情) ========== -->
+<!-- ========== VIEW: DIY Board (自由看板) ========== -->
+<div id="viewDiy" class="view-section fade-in">
+  <div class="card p-4 mb-4">
+    <div class="flex flex-wrap items-center justify-between mb-3 gap-3">
+      <div class="flex items-center gap-3 flex-wrap">
+        <h3 class="text-base font-bold text-gray-800">DIY 看板</h3>
+        <!-- V9.6：项目分组 tabs（与主看板同步，但可在 DIY 内独立切换） -->
+        <div id="diyProjectTabs" class="flex bg-blue-50 rounded-lg p-0.5 gap-0.5"></div>
+        <!-- V9.4：指标切换页卡（筛选显示对应数据） -->
+        <div id="diyMetricTabs" class="flex bg-gray-100 rounded-lg p-0.5 gap-0.5"></div>
+      </div>
+      <div class="flex items-center gap-2 flex-wrap">
+        <input type="date" id="diyDateFrom" class="text-xs border border-gray-200 rounded-md px-2 py-1" onchange="renderDiyBoard()">
+        <span class="text-xs text-gray-400">~</span>
+        <input type="date" id="diyDateTo" class="text-xs border border-gray-200 rounded-md px-2 py-1" onchange="renderDiyBoard()">
+        <button onclick="diyToggleEdit()" id="diyEditBtn" class="btn btn-outline btn-sm" style="padding:3px 8px;font-size:11px;">✏️ 编辑</button>
+        <button onclick="diyExport()" class="btn btn-outline btn-sm" style="padding:3px 8px;font-size:11px;">⬇ 导出CSV</button>
+        <button onclick="diyShowConfig()" class="btn btn-outline btn-sm" style="padding:3px 8px;font-size:11px;">⚙ 指标设置</button>
+      </div>
+    </div>
+    <!-- 编辑提示 -->
+    <div id="diyEditHint" style="display:none;margin-bottom:8px;font-size:11px;color:#b45309;background:#fffbeb;padding:6px 10px;border-radius:6px;">✏️ 编辑模式：点击单元格修改数值，修改会自动保存；再次点「编辑」退出。</div>
+    <div id="diyMatrixWrap" style="overflow-x:auto;overflow-y:auto;max-height:82vh;border:1px solid #e5e7eb;border-radius:10px;background:#fff;">
+      <div id="diyMatrixContent" class="text-xs"></div>
+    </div>
+  </div>
+
+  <!-- V9.4.1：指标配置弹窗（可视化选列模式） -->
+  <div id="diyConfigModal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.35);z-index:9999;align-items:center;justify-content:center;">
+    <div style="background:#fff;border-radius:12px;max-width:900px;width:94%;max-height:88vh;overflow:auto;padding:18px;">
+      <div class="flex justify-between items-center mb-3">
+        <h4 class="font-bold text-gray-800">指标设置（DIY）<span class="text-xs font-normal text-gray-500 ml-2">点击指标卡片直接修改 / 点「✏️ 修改」编辑 / 点「✕ 删除」移除</span></h4>
+        <button onclick="diyHideConfig()" class="btn btn-outline btn-sm">关闭</button>
+      </div>
+
+      <!-- 已有指标列表 -->
+      <div id="diyMetricList" class="space-y-2 mb-4"></div>
+      <hr style="margin:14px 0;">
+
+      <!-- V9.5：可视化新增 / 修改区域（预设指标也能点上面卡片直接改） -->
+      <h5 id="diyFormTitle" class="font-semibold text-gray-700 mb-2">＋ 新增自定义指标（点击数据表列头快速选取字段）</h5>
+
+      <!-- 数据源切换 + 预览表 -->
+      <div class="flex gap-2 mb-1 flex-wrap">
+        <button id="diySrcTab_daily" class="btn btn-sm diy-src-tab active" onclick="diySwitchSrcTab('daily')">📊工作量数据</button>
+        <button id="diySrcTab_util" class="btn btn-outline btn-sm diy-src-tab" onclick="diySwitchSrcTab('util')">⏱工时利用率</button>
+        <button id="diySrcTab_nontask" class="btn btn-outline btn-sm diy-src-tab" onclick="diySwitchSrcTab('nontask')">📋非任务工时</button>
+        <button id="diySrcTab_zanli" class="btn btn-outline btn-sm diy-src-tab" onclick="diySwitchSrcTab('zanli')">⏰暂离数据</button>
+        <span style="border-left:1px solid #e5e7eb;margin:0 4px;"></span>
+        <span style="font-size:11px;color:#9ca3af;align-self:center;">异常盘点：</span>
+        <button id="diySrcTab_kuanggong" class="btn btn-outline btn-sm diy-src-tab" onclick="diySwitchSrcTab('kuanggong')" title="data_【联营】非任务盘点_旷工有非任务_*.csv">🚫旷工</button>
+        <button id="diySrcTab_banci_nei" class="btn btn-outline btn-sm diy-src-tab" onclick="diySwitchSrcTab('banci_nei')" title="data_【联营】非任务盘点_班次内休息时长有非任务存在_*.csv">🛏班次内</button>
+        <button id="diySrcTab_banci_wai" class="btn btn-outline btn-sm diy-src-tab" onclick="diySwitchSrcTab('banci_wai')" title="data_【联营】非任务盘点_班次外非任务不等于0_*.csv">⏳班次外</button>
+        <button id="diySrcTab_fei_jishi" class="btn btn-outline btn-sm diy-src-tab" onclick="diySwitchSrcTab('fei_jishi')" title="data_【联营】非任务盘点_非任务与计时任务_*.csv">📑非任务∧计时</button>
+      </div>
+      <!-- V9.5：说明每个数据源对应的原始 CSV 文件与姓名列，字段位置变了也好定位 -->
+      <p id="diySrcHint" class="text-[11px] text-gray-400 mb-2"></p>
+
+      <!-- V9.7：数据预览区（点击列头选中字段）—— 提高高度 + 明确可横向滚动 -->
+      <div id="diyDataPreview" style="overflow-x:auto;border:1px solid #e5e7eb;border-radius:8px;margin-bottom:8px;max-height:280px;position:relative;">
+        <p class="text-xs text-gray-400 p-3 text-center">请选择上方数据源查看预览</p>
+      </div>
+
+      <!-- V9.6：已选字段 chips —— 多列支持（点击列头添加，再次点击移除） -->
+      <div class="flex flex-wrap items-center gap-1 mb-3 text-xs">
+        <span class="text-gray-500 font-semibold mr-1">已选字段：</span>
+        <span id="diyFieldChips" class="flex flex-wrap gap-1"></span>
+        <span id="diySelectedColHint" class="text-xs text-blue-500 ml-auto"></span>
+      </div>
+
+      <!-- 新增/修改表单（选中列后自动填充）—— V9.5：全程中文，内部字段名隐藏 -->
+      <div class="grid grid-cols-2 gap-2 text-xs bg-gray-50 p-3 rounded-lg">
+        <input id="newMKey" placeholder="指标标识（英文，唯一）" class="border rounded px-2 py-1.5 bg-white">
+        <input id="newMLabel" placeholder="显示名称（如：总标准条）" class="border rounded px-2 py-1.5 bg-white" oninput="renderDiyLivePreview()">
+        <input id="newMUnit" placeholder="单位（条 / 分钟 / 小时 / % / 次）" class="border rounded px-2 py-1.5 bg-white" oninput="renderDiyLivePreview()">
+        <select id="newMType" class="border rounded px-2 py-1.5 bg-white" onchange="diyOnTypeChange()">
+          <option value="number">单值（取 1 个字段，多选自动求和）</option>
+          <option value="dual">双值（时长/次数，仅暂离用）</option>
+          <option value="formula">公式（自定义计算表达式）</option>
+        </select>
+        <!-- V9.5.1：公式输入框（仅 type=formula 时显示） -->
+        <div id="diyFormulaRow" class="col-span-2 hidden">
+          <label class="text-[11px] text-gray-500 mb-1 block">公式表达式（点下方变量可直接插入）</label>
+          <textarea id="newMFormula" rows="2" class="w-full border rounded px-2 py-1.5 text-xs font-mono bg-gray-50"
+            placeholder="例：daily_线上标准条 + daily_线下标准条 + daily_计时标准条 + nontask_标准条"
+            oninput="renderDiyLivePreview()"></textarea>
+          <div class="flex items-center gap-2 mt-1 flex-wrap">
+            <input id="diyVarSearch" oninput="renderDiyVarChips()" placeholder="🔍 搜变量（如：非任务 / 效能 / 出勤）"
+              class="border rounded px-2 py-1 text-[11px] bg-white" style="min-width:190px;">
+            <span class="text-[10px] text-gray-400">支持 + − × ÷ 括号、Math.max / Math.min / Math.round</span>
+          </div>
+          <div id="diyVarChips" class="flex flex-wrap gap-1 mt-1" style="max-height:96px;overflow-y:auto;"></div>
+        </div>
+        <!-- 字段选择区（type=formula 时隐藏） -->
+        <div id="diyFieldRow" class="col-span-2">
+          <input id="newMFieldCn" placeholder="字段（点上方表格的列头自动填入）" class="border rounded px-2 py-1.5 bg-white col-span-1" readonly style="background:#f0f9ff;color:#0369a1;font-weight:600;">
+          <input id="newMField" type="hidden" value="">
+        </div>
+        <div class="col-span-2 flex gap-2 flex-wrap">
+          <button id="diySaveBtn" onclick="diySaveMetric()" class="btn btn-primary btn-sm">＋ 添加指标</button>
+          <button onclick="diyCancelEdit()" class="btn btn-outline btn-sm">取消 / 清空</button>
+        </div>
+      </div>
+
+      <!-- V9.6：实时预览 —— 前 5 人 × 前 3 日，按当前表单实时计算 -->
+      <div class="mt-3">
+        <div class="flex items-center gap-2 mb-1">
+          <span class="text-xs font-semibold text-gray-600">📊 实时预览</span>
+          <span class="text-[10px] text-gray-400">（前 5 人 × 前 3 日，随表单实时更新）</span>
+        </div>
+        <div id="diyLivePreview" style="overflow-x:auto;border:1px solid #e5e7eb;border-radius:8px;padding:8px;background:#f8fafc;">
+          <p class="text-xs text-gray-400 text-center py-4">填好字段后这里会显示按当前配置算出来的前几行结果</p>
+        </div>
+      </div>
+      <p class="text-xs text-gray-400 mt-2">用法：① 上面四个数据源按钮切换表格　② 点表格<b class="text-blue-500">列头</b>选中字段（再点取消选择，多选自动求和）　③ 填好名称点保存。<br>要<b class="text-blue-500">改数据源</b>：直接点上方四个数据源按钮即可（编辑状态下会提示你重新点列头选字段）。<br>要<b class="text-blue-500">用公式</b>：类型选「公式（自定义计算表达式）」，在公式框里引用变量（可用搜索框筛选、点变量直接插入）。<br>要修改已有指标（含默认指标）：点上方指标卡片或右侧 ✏️，改完点「保存修改」即可，不用删除重建。</p>
+    </div>
+  </div>
+</div>
 <div id="viewDetail" class="view-section fade-in">
   <div class="mb-4 flex items-center gap-3"><button onclick="goBackFromDetail()" class="btn btn-outline btn-sm" id="detailBackBtn">← 返回</button><h2 class="text-lg font-bold text-gray-800" id="detailTitle">员工详情</h2></div>
   
@@ -1420,7 +1560,7 @@
   <div class="inspiration-author" id="inspirationAuthor">—— 加油的打工人</div>
   <button onclick="openInspirationManager()" style="position:absolute;right:10px;top:10px;background:rgba(255,255,255,0.6);border:1px solid #cbd5e1;color:#64748b;border-radius:6px;padding:3px 8px;font-size:11px;cursor:pointer;" title="管理语录">⚙ 管理</button>
   <!-- V8.48：版本号挪到这里（右下小角标），主看板顶部不再占位 -->
-  <span style="position:absolute;left:14px;top:50%;transform:translateY(-50%);font-size:10px;color:#94a3b8;font-weight:500;letter-spacing:0.4px;font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;opacity:0.65;" title="当前版本">v8.92</span>
+  <span style="position:absolute;left:14px;top:50%;transform:translateY(-50%);font-size:10px;color:#94a3b8;font-weight:500;letter-spacing:0.4px;font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;opacity:0.65;" title="当前版本 V9.8（2026-08-31）">v9.8</span>
 </div>
 
 <!-- Modal: Daily Row CRUD -->
@@ -1532,6 +1672,22 @@ const __defaultApp = {
   // 不再使用硬编码 groupRules / groupExclude
   dynamicGroups: [],        // 从CSV自动提取的唯一组织架构路径列表
   empOrgMap: new Map(),     // 复合键 "英文名|org" → {cn, en, org, uin}，防同名不同组混同
+  // V9.4：异常检测系统
+  anomalyMap: new Map(),    // key: emp|date → {p0:Set<typeKey>, p1:Set<typeKey>, org:string}
+  anomRawRows: {            // V9.7：4 个异常盘点表的原始行（按类型）—— 给 DIY 编辑器预览用
+    kuanggong: [], banci_nei: [], banci_wai: [], fei_jishi: []
+  },
+  zanliRawRows: [],         // V9.7：暂离原始行（从非任务表里读出来的暂离列 + 暂离盘点）
+  zanliMap: new Map(),     // V9.4：key: emp|date → {durMin, cnt}（暂离，供DIY看板）
+  diyMaps: null,           // V9.4：DIY 指标查找表（buildDiyMaps 生成）
+  diyMetrics: [],          // V9.4：DIY 指标定义（含 7 预设 + 用户自定义）
+  diyEdits: {},            // V9.4：编辑值 key=metricKey -> (emp|date -> value)
+  diyCurrent: '',          // V9.4：当前选中的 DIY 指标 key
+  anomalyConfig: {         // 阈值（可设置）
+    zanliMaxTotalMin: 60,  // 暂离总时长 > 60min
+    zanliMaxSingleMin: 15, // 单次暂离 > 15min（用时长/次数估算）
+    utilGapMinHour: 1      // 工时利用率缺口（出勤-审核-计时）< -阈值 即异常
+  },
   orgPeriodConfig: {
     'H1组': '21to20',
     '嘉兰项目': '1toEnd',
@@ -1612,8 +1768,15 @@ function buildDynamicGroups() {
   // 3. 动态构建白名单（从CSV数据自动收集，替代/补充硬编码 scheduleWhitelist）
   // 同时构建 empOrgMap 复合键
   for (const r of allRows) {
-    const en = (r._empEn || '').trim();
-    const cn = (r._emp || '').trim();
+    // V9.5.2：★ 数据不对称修正 ——
+    //   rawRows / nontaskRows：_emp = 中文名，_empEn = 英文名
+    //   utilRows（工时表）    ：_emp = 英文名/账号，中文名在 _chineseName
+    //   以前这里把 utilRows 的 _emp（英文）当成中文名写入白名单，
+    //   导致「只在工时表出现」的 29 个人的中文名从不进白名单，
+    //   后续任何按中文名匹配的环节都找不到他们（= 没把其他人当人）。
+    const isUtilRow = (r._chineseName !== undefined);
+    const en = isUtilRow ? (r._emp || '').trim() : (r._empEn || '').trim();
+    const cn = isUtilRow ? ((r._chineseName || r._emp || '').trim()) : (r._emp || '').trim();
     const uin = (r._uin || '').trim();
     const org = (r._org || '').trim();
     if (!en && !cn && !uin) continue;
@@ -1923,6 +2086,13 @@ const WORKLOAD_RULES = {
   minutes: ['任务时长，单位：分钟  [总和]','任务时长，单位：分钟 [总和]','任务时长,单位:分钟 [总和]','任务时长','时长(分钟)','计时(分钟)','minutes'],
 
   std:     ['标准条  [总和]','标准条','std'],
+  // V9.5.1：以下产量列以前被整体丢弃，导致「标准条」只能靠源表自带列，无法按效能重算
+  prodType:['产能类型','产能'],                                   // 自营 / 联营
+  ilabel:  ['ilabel审核量  [总和]','ilabel审核量 [总和]','ilabel审核量'],
+  qc:      ['ilabel质检量  [总和]','ilabel质检量 [总和]','ilabel质检量'],
+  kaiping: ['开平审核量  [总和]','开平审核量 [总和]','开平审核量'],
+  zhuan:   ['iLabel转单量  [总和]','iLabel转单量 [总和]','iLabel转单量','ilabel转单量'],
+  wanxiang:['万象审核量  [总和]','万象审核量 [总和]','万象审核量'],
 };
 const NONTASK_RULES = {
   emp:     ['员工中文名','员工姓名','姓名','员工','员工_uin','员工工号'],
@@ -2065,7 +2235,14 @@ function processWorkload(rows) {
       _tong3:    Number(vals[map.tong3]) || 0,
       _nontong:  Number(vals[map.nontong]) || 0,
       _minutes:  Number(vals[map.minutes]) || 0,
-      _origStd:  Number(vals[map.std]) || 0
+      _origStd:  Number(vals[map.std]) || 0,
+      // V9.5.1：补齐此前被丢弃的产量列（线上=通航系，线下=ilabel/开平/非通航/质检/转单/万象）
+      _prodType: map.prodType!==undefined ? String(vals[map.prodType]||'').trim() : '',
+      _ilabel:   Number(vals[map.ilabel])   || 0,
+      _qc:       Number(vals[map.qc])       || 0,
+      _kaiping:  Number(vals[map.kaiping])  || 0,
+      _zhuan:    Number(vals[map.zhuan])    || 0,
+      _wanxiang: Number(vals[map.wanxiang]) || 0
     };
     if (row._emp && row._uin) { App.empUinMap.set(row._emp, row._uin); App.uinToEmpMap.set(row._uin, row._emp); }
     if (row._emp && row._empEn) { App.empEnMap.set(row._emp, row._empEn); App.enToCnMap.set(row._empEn, row._emp); }
@@ -2274,6 +2451,49 @@ function processUtil(rows) { if (!rows.length) return; const headers=Object.keys
   const nontaskIdx      = colMap.nontask?.idx       ?? -1;
   const deptIdx         = colMap.dept?.idx         ?? -1;
 
+  // V9.5.1：工时利用率底表里还有大量此前被整体丢弃的列（标准条 / 平台审核条 / 效能 / 线下时长之和）
+  //         这些是「联营基地（木柏）」唯一的产能数据来源，必须保留，否则 DIY 公式无从计算
+  const _pickIdx = (names) => {
+    for (const nm of names){
+      const i = headers.findIndex(h => String(h||'').trim() === nm);
+      if (i >= 0) return i;
+    }
+    for (const nm of names){
+      const i = headers.findIndex(h => String(h||'').trim().indexOf(nm) >= 0);
+      if (i >= 0) return i;
+    }
+    return -1;
+  };
+  const X = {
+    prodType:   _pickIdx(['产能类型']),
+    effStd:     _pickIdx(['管理效能标准条']),
+    settleStd:  _pickIdx(['结算效能标准条']),
+    stdTong:    _pickIdx(['通航标准条']),
+    stdIlabel:  _pickIdx(['ilabel标准条']),
+    stdMp:      _pickIdx(['mp标准条']),
+    stdQc:      _pickIdx(['ilabel质检标准条']),
+    stdTransfer:_pickIdx(['ilabel转单标准条']),
+    platTong:   _pickIdx(['通航平台审核条']),
+    platIlabel: _pickIdx(['ilabel平台审核条']),
+    platMp:     _pickIdx(['mp平台审核条']),
+    nontaskNetH:_pickIdx(['非任务净时长(小时)','非任务净时长']),
+    offlineSumH:_pickIdx(['线下时长之和(小时)']),
+    offlineSumNontaskH: _pickIdx(['线下时长之和_含非任务(小时)']),
+    auditTotalH:_pickIdx(['总审核时长(小时)']),
+    onlineUtil: _pickIdx(['线上工时利用率(%)'])
+  };
+  // 精确匹配兜底：'ilabel标准条' 会被 'ilabel质检标准条' 抢走，这里按"最短全等优先"修正
+  {
+    const H = headers.map(h=>String(h||'').trim());
+    const exact = (nm)=>H.indexOf(nm);
+    const e1=exact('ilabel标准条');   if(e1>=0) X.stdIlabel=e1;
+    const e2=exact('mp标准条');       if(e2>=0) X.stdMp=e2;
+    const e3=exact('通航标准条');     if(e3>=0) X.stdTong=e3;
+    const e4=exact('通航平台审核条'); if(e4>=0) X.platTong=e4;
+    const e5=exact('ilabel平台审核条'); if(e5>=0) X.platIlabel=e5;
+    const e6=exact('mp平台审核条');   if(e6>=0) X.platMp=e6;
+  }
+
   // 必需列缺失：提示用户
   const missing = diagnostics.filter(d => d.status === 'missing' && ['date','attend','tongAudit','measure','offlineTiming','nontask','util'].includes(d.key));
   if (missing.length){
@@ -2396,6 +2616,23 @@ function processUtil(rows) { if (!rows.length) return; const headers=Object.keys
         _measureH: measureH,
         _offlineTimingH: offlineTimingH,
         _nontaskH: nontaskH,
+        // V9.5.1：保留此前被丢弃的关键列（供 DIY 公式 / 联营基地产能计算）
+        _prodType:   X.prodType>=0    ? String(vals[X.prodType]||'').trim() : '',
+        _effStd:     X.effStd>=0      ? (parseFloat(vals[X.effStd])||0)      : 0,
+        _settleStd:  X.settleStd>=0   ? (parseFloat(vals[X.settleStd])||0)   : 0,
+        _stdTong:    X.stdTong>=0     ? (parseFloat(vals[X.stdTong])||0)     : 0,
+        _stdIlabel:  X.stdIlabel>=0   ? (parseFloat(vals[X.stdIlabel])||0)   : 0,
+        _stdMp:      X.stdMp>=0       ? (parseFloat(vals[X.stdMp])||0)       : 0,
+        _stdQc:      X.stdQc>=0       ? (parseFloat(vals[X.stdQc])||0)       : 0,
+        _stdTransfer:X.stdTransfer>=0 ? (parseFloat(vals[X.stdTransfer])||0) : 0,
+        _platTong:   X.platTong>=0    ? (parseFloat(vals[X.platTong])||0)    : 0,
+        _platIlabel: X.platIlabel>=0  ? (parseFloat(vals[X.platIlabel])||0)  : 0,
+        _platMp:     X.platMp>=0      ? (parseFloat(vals[X.platMp])||0)      : 0,
+        _nontaskNetH:X.nontaskNetH>=0 ? (parseFloat(vals[X.nontaskNetH])||0) : 0,
+        _offlineSumH:X.offlineSumH>=0 ? (parseFloat(vals[X.offlineSumH])||0) : 0,
+        _offlineSumNontaskH: X.offlineSumNontaskH>=0 ? (parseFloat(vals[X.offlineSumNontaskH])||0) : 0,
+        _auditTotalH:X.auditTotalH>=0 ? (parseFloat(vals[X.auditTotalH])||0) : 0,
+        _onlineUtil: X.onlineUtil>=0  ? (parseFloat(vals[X.onlineUtil])||0)  : 0,
         _isAbnormal: utilRate !== null && isUtilAbnormal(utilRate),
         _utilLevel: utilLevel,
         // 逐步追踪（详情面板用）
@@ -2691,6 +2928,102 @@ function calcRow(r) {
   return {...r, meterStd: finalMeter, timingStd: finalTiming, tongStd: finalTong, tong3Std: 0, nontongStd: finalNontong, totalMeter, totalStd: finalTotal};
 }
 
+// ============================================================
+// V9.5.2：「把其他人当人」—— 出勤人天补全
+// ------------------------------------------------------------
+// 背景：App.dailyData 只由【工作量表】的行聚合而来。
+//       但工时表里 84 人 / 1852 个出勤人天中，有 29 人、829 人天（44.8%）
+//       在工作量表里根本没有对应记录（木柏项目 31 人 768 人天最严重）。
+//       这些人明明上班了，却在看板上完全不存在：
+//         - 人员名单里没有 → 人均产出分母偏小（人均虚高）
+//         - 无法被筛选、无法看利用率、零产出的异常也发现不了
+// 方案：扫描工时表，凡「出勤时长 > 0 且工作量表当日无此人记录」的 (人, 日期)，
+//       补一条 _phantom:true 的 dailyData 行，标准条为 0、出勤/利用率照实填。
+//       这样「出勤了却零产出」的人会作为最该被看见的异常浮出水面。
+// ============================================================
+function _injectUtilAttendRows(){
+  if(!App.utilRows || !App.utilRows.length) return;
+  if(!App.dailyData) App.dailyData = [];
+
+  // 已有 (人,日期) 索引 —— 中文名 / 英文名 / uin 三种键都要建
+  const exist = new Set();
+  const norm = (s)=>String(s==null?'':s).trim().toLowerCase();
+  for(const d of App.dailyData){
+    const ds = d.date || '';
+    if(d.emp)   exist.add(norm(d.emp)   + '|' + ds);
+    if(d.empEn) exist.add(norm(d.empEn) + '|' + ds);
+    if(d.uin)   exist.add(norm(d.uin)   + '|' + ds);
+  }
+
+  // 按 (人,日期) 聚合工时表出勤（同一人同日可能有多行，如分产能类型）
+  const agg = new Map();
+  for(const ur of App.utilRows){
+    const cn = (ur._chineseName || '').trim();
+    const en = (ur._emp || '').trim();
+    const nm = cn || en;
+    const ds = ur._dateStr || '';
+    if(!nm || !ds) continue;
+    if(Number(ur._attendH) <= 0) continue;           // 没出勤的不算人天
+    if(exist.has(norm(cn) + '|' + ds)) continue;
+    if(exist.has(norm(en) + '|' + ds)) continue;
+    if(ur._uin && exist.has(norm(ur._uin) + '|' + ds)) continue;
+
+    const key = norm(nm) + '|' + ds;
+    let a = agg.get(key);
+    if(!a){
+      a = {
+        emp: nm, empEn: en || '', uin: (ur._uin || '').trim(), org: (ur._org || '').trim(), date: ds,
+        attendH: 0, tongH: 0, measureH: 0, offlineTimingH: 0, nontaskH: 0,
+        stdSum: 0, platSum: 0, utilRate: null
+      };
+      agg.set(key, a);
+    }
+    a.attendH        += Number(ur._attendH)        || 0;
+    a.tongH          += Number(ur._tongH)          || 0;
+    a.measureH       += Number(ur._measureH)       || 0;
+    a.offlineTimingH += Number(ur._offlineTimingH) || 0;
+    a.nontaskH       += Number(ur._nontaskH)       || 0;
+    // V9.5.1 新增的标准条列 + 平台审核条列（V9.5.2 起作为补全行的产出来源）
+    a.stdSum  += (Number(ur._stdTong)||0) + (Number(ur._stdIlabel)||0) + (Number(ur._stdMp)||0);
+    a.platSum += (Number(ur._platTong)||0) + (Number(ur._platIlabel)||0) + (Number(ur._platMp)||0);
+    if(a.utilRate === null && ur._utilRate !== null && ur._utilRate !== undefined) a.utilRate = ur._utilRate;
+    if(!a.org && ur._org) a.org = String(ur._org).trim();
+  }
+
+  if(!agg.size) return;
+
+  let nFromPlat = 0, nZero = 0;
+  for(const a of agg.values()){
+    // 产出取数分级：① 标准条列（与现有口径完全一致）② 平台审核条 ③ 都没有才是真·零产出
+    let totalStd = a.stdSum;
+    let stdFromPlat = false;
+    if(!(totalStd > 0) && a.platSum > 0){
+      totalStd = a.platSum;
+      stdFromPlat = true;
+      nFromPlat++;
+    }
+    if(!(totalStd > 0)) nZero++;
+    App.dailyData.push({
+      emp: a.emp, empEn: a.empEn, uin: a.uin, org: a.org, date: a.date,
+      tongStd: 0, tong3Std: 0, nontongStd: 0, meterStd: 0, timingStd: 0, nontaskStd: 0,
+      totalStd: totalStd,
+      rows: [],
+      // 出勤/利用率按工时表照实填，让下游详情面板、利用率看板有数可查
+      attendH: a.attendH, tongH: a.tongH, measureH: a.measureH,
+      offlineTimingH: a.offlineTimingH, nontaskH: a.nontaskH, utilRate: a.utilRate,
+      platTong: a.platSum,
+      // 标记：出勤了但工作量表无记录
+      _phantom: true,
+      _attendOnly: true,
+      _stdFromPlat: stdFromPlat,     // 产出用的是平台审核条（未折算标准条）
+      _zeroOutput: !(totalStd > 0)   // 出勤了却完全没有产出 —— 最该被看见的异常
+    });
+  }
+  console.log('[出勤补全] 注入「出勤无工作量记录」人天', agg.size, '条（涉及',
+              new Set([...agg.values()].map(x=>x.emp)).size, '人）',
+              '| 产出取平台审核条', nFromPlat, '条 | 真·零产出', nZero, '条');
+}
+
 
 
 function calcAll() {
@@ -2855,25 +3188,19 @@ function calcAll() {
   App.dailyData = App.dailyData.filter(isWhitelistedStrict);
   console.log('[白名单过滤] dailyData:', beforeCount, '→', App.dailyData.length, '(白名单', whitelistSet.size, '人)');
 
-  // 同步过滤 utilRows（V8.95e：增加交叉校验，只保留 dailyData 中验证过的员工）
+  // 同步过滤 utilRows
+  // V9.5.2：★ 去掉「必须在 dailyData 里出现过」的交叉校验。
+  //   工时表是【唯一】能证明「这个人当天上班了」的数据源。
+  //   旧逻辑要求 utilRow 的人必须先在 dailyData（由工作量表构建）里存在，
+  //   于是所有「出勤了但工作量表没记录」的人被整体剔除 —— 实测 84 人中 29 人、
+  //   1852 个出勤人天里 829 人天（44.8%）直接从看板消失（木柏 31 人 / 嘉兰 9 人 / H1 2 人）。
+  //   现在改为与 rawRows / nontaskRows 一致的口径：白名单 + 组织校验。
   if (App.utilRows) {
     const ubefore = App.utilRows.length;
-    // 构建 dailyData 中已验证的 emp+uin 集合
-    const verifiedEmpUins = new Set();
-    for (const d of App.dailyData) {
-      if (d.emp) verifiedEmpUins.add(d.emp);
-      if (d.empEn) verifiedEmpUins.add(d.empEn);
-      if (d.uin) verifiedEmpUins.add(d.uin);
-    }
     App.utilRows = App.utilRows.filter(ur => {
-      // 白名单基础过滤
       if (!(whitelistSet.has(ur._emp) || whitelistSet.has(ur._chineseName) || whitelistSet.has(ur._uin))) return false;
-      // 交叉校验：utilRow 的人必须在已验证的 dailyData 中出现过
-      if (ur._uin && verifiedEmpUins.has(ur._uin)) return true;
-      if (ur._chineseName && verifiedEmpUins.has(ur._chineseName)) return true;
-      if (ur._emp && verifiedEmpUins.has(ur._emp)) return true;
-      // 都匹配不上→可能是非目标组织的同名人员，排除
-      return false;
+      if (ur._org && !orgOk(ur._org)) return false;
+      return true;
     });
     console.log('[白名单过滤] utilRows:', ubefore, '→', App.utilRows.length);
   }
@@ -2900,6 +3227,9 @@ function calcAll() {
     console.log('[白名单过滤] nontaskRows:', nbefore, '→', App.nontaskRows.length);
   }
 
+  // V9.5.2：★「把其他人当人」—— 注入「出勤但无工作量记录」的人天
+  _injectUtilAttendRows();
+
   applyManualRows();
   App.dailyData.sort((a,b)=>a.date.localeCompare(b.date)||(a.empEn||a.emp||'').localeCompare(b.empEn||b.emp||''));
 
@@ -2913,6 +3243,8 @@ function calcAll() {
   }
   
   applyFilters();
+  // V9.4：构建 DIY 看板指标查找表
+  try { buildDiyMaps(); } catch(e) { console.warn('[V9.4] buildDiyMaps 失败:', e); }
 }
 
 function rowKey(d){ return (d?.uin||d?.empEn||d?.emp||'')+'|'+(d?.date||''); }
@@ -4070,11 +4402,30 @@ function _injectAttendNoDataRows(){
     existKeys.add(ek+'_'+d.date);
   }
   // 当前范围内的员工集合
+  // V9.5.2：原来只从 App.filteredData 取，而 filteredData 里全是【有数据】的人，
+  //         于是「排班里有、但一条数据都没有」的人永远进不了 empInScope，
+  //         下一行 !empInScope.has(emp) 又把他们跳过 —— 自相矛盾，等于没把其他人当人。
+  //         现在并入：工时表出勤过的人 + 排班表里出现过的人。
   const empInScope = new Set();
   for(const d of App.filteredData){
     if(d.emp) empInScope.add(d.emp);
     if(d.empEn) empInScope.add(d.empEn);
     if(d.uin) empInScope.add(d.uin);
+  }
+  for(const ur of (App.utilRows||[])){
+    if(ur._chineseName) empInScope.add(ur._chineseName);
+    if(ur._emp) empInScope.add(ur._emp);
+    if(ur._uin) empInScope.add(ur._uin);
+  }
+  for(const nr of (App.nontaskRows||[])){
+    if(nr._emp) empInScope.add(nr._emp);
+    if(nr._empEn) empInScope.add(nr._empEn);
+    if(nr._uin) empInScope.add(nr._uin);
+  }
+  // 排班表里出现过的人，一律视为在范围内（本函数本来就是按排班补人）
+  for(const k in App.scheduleMap){
+    const sc=App.scheduleMap[k];
+    if(sc&&sc.emp) empInScope.add(sc.emp);
   }
   const leaveRe = /年假|事假|病假|育儿假|丧假|陪产假|工伤|调休假|产检|产假|婚假|旷工|休息|休$/;
   const checked = new Set();
@@ -10888,10 +11239,22 @@ function parseCSVText(text, filename){
 /** 根据文件名判断类型 */
 function detectFileType(filename){
   const fn=filename.toLowerCase();
+  // V9.5.2：异常盘点文件名里带「班次」二字（班次内休息/班次外非任务），
+  //         必须排在最前面，否则会被下面的「排班/班次」规则误判成排班表。
+  if(fn.includes('旷工有非任务'))return 'anom_kuanggong';
+  if(fn.includes('班次内休息时长有非任务')||fn.includes('班次内休息'))return 'anom_banci_nei';
+  if(fn.includes('班次外非任务不等于0')||fn.includes('班次外非任务'))return 'anom_banci_wai';
+  if(fn.includes('非任务与计时任务'))return 'anom_fei_jishi';
   if(fn.includes('排班')||fn.includes('班表')||fn.includes('schedule')||fn.includes('班次'))return 'schedule';
+  if(fn.includes('工时利用率')||fn.includes('util'))return 'util';
+  // V9.5.2：★「百灵非任务工时统计」是【非任务主数据】，不是异常表！
+  //         以前它被判成 anom_zanli，导致 App.nontaskRows 永远是空的 →
+  //         DIY 看板「非任务」数据源 0 行、总标准条公式的 nontask_标准条 恒为 0。
+  //         它同时含「暂离时长/暂离次数」列，暂离异常与 DIY 暂离指标仍要靠它，
+  //         所以在 processAutoFile 里会额外再跑一次 parseAnomZanLi。
+  if(fn.includes('非任务工时统计'))return 'nontask';
   if(fn.includes('非任务')||fn.includes('nontask'))return 'nontask';
   if(fn.includes('工作量')||fn.includes('workload'))return 'workload';
-  if(fn.includes('工时利用率')||fn.includes('util'))return 'util';
   return 'unknown';
 }
 
@@ -10915,6 +11278,20 @@ function processAutoFile(file, typeHint){
             parseScheduleSheet(rows,text);
           }else if(detectedType==='nontask'){
             processNontask(rows);
+            // V9.5.2：「非任务工时统计」同时是暂离数据的唯一来源（含暂离时长/暂离次数列）
+            try{ parseAnomZanLi(rows); }catch(err){ console.warn('[暂离] 解析失败:', err); }
+          }else if(detectedType==='util'){
+            processUtil(rows);
+          }else if(detectedType==='anom_kuanggong'){
+            parseAnomKuangGong(rows);
+          }else if(detectedType==='anom_banci_nei'){
+            parseAnomBanciNei(rows);
+          }else if(detectedType==='anom_banci_wai'){
+            parseAnomBanciWai(rows);
+          }else if(detectedType==='anom_fei_jishi'){
+            parseAnomFeiJiShi(rows);
+          }else if(detectedType==='anom_zanli'){
+            parseAnomZanLi(rows);
           }else if(detectedType==='util'){
             processUtil(rows);
           }else{
@@ -10930,12 +11307,35 @@ function processAutoFile(file, typeHint){
           let wl=null,nt=null,util=null,sch=false;
           const isSchedule = detectedType==='schedule';
           const isUtil = detectedType==='util';
+          // V9.4：Excel 版异常文件 → 逐 Sheet 解析
+          const ANOM_EXCEL_ROUTE = {
+            'anom_kuanggong': parseAnomKuangGong,
+            'anom_banci_nei': parseAnomBanciNei,
+            'anom_banci_wai': parseAnomBanciWai,
+            'anom_fei_jishi': parseAnomFeiJiShi,
+            'anom_zanli': parseAnomZanLi
+          };
+          if(ANOM_EXCEL_ROUTE[detectedType]){
+            const fnAnom=ANOM_EXCEL_ROUTE[detectedType];
+            for(const sn of sheets){
+              try{
+                const json=XLSX.utils.sheet_to_json(wb.Sheets[sn],{raw:true,defval:''});
+                if(json && json.length) fnAnom(json);
+              }catch(e){ console.warn('[Excel异常] Sheet失败:',sn,e.message); }
+            }
+            resolve({type:detectedType,name:file.name});
+            return;
+          }
           for(const sn of sheets){
             const sl=sn.toLowerCase();
             const sheet=wb.Sheets[sn];
             console.log('[Excel] 处理Sheet:',sn,'| raw:',typeof sheet);
             try {
-              if(isSchedule || sl.includes('排班')||sl.includes('班')){
+              // V9.5.2：原来只判断 sl.includes('班')，会把「班次内休息时长有非任务」「班次外非任务不等于0」
+              //         这类异常盘点 Sheet 误当成排班表解析。先排除异常类 Sheet 名，再走排班判断。
+              const _isAnomSheet = sl.includes('班次内休息')||sl.includes('班次外非任务')||
+                                   sl.includes('旷工')||sl.includes('非任务与计时');
+              if(!_isAnomSheet && (isSchedule || sl.includes('排班')||sl.includes('班表')||sl.includes('schedule')||sl.includes('班'))){
                 const csv=XLSX.utils.sheet_to_csv(sheet);
                 const json=XLSX.utils.sheet_to_json(sheet,{raw:true,defval:''});
                 parseScheduleSheet(json,csv); sch=true;
@@ -10978,7 +11378,10 @@ function processAutoFile(file, typeHint){
           console.log('[Excel] 解析完成 wl:',!!wl,'(wl?',wl?.length,') nt:',!!nt,'(nt?',nt?.length,') util:',!!util,'(util?',util?.length,'行) sch:',sch);
           if(!isSchedule){
             if(wl){console.log('[Excel] 调用processWorkload...'); processWorkload(wl);}
-            if(nt){console.log('[Excel] 调用processNontask...'); processNontask(nt);}
+            if(nt){console.log('[Excel] 调用processNontask...'); processNontask(nt);
+              // V9.5.2：非任务表也是暂离数据（暂离时长/暂离次数）的唯一来源，补跑一次暂离解析
+              try{ parseAnomZanLi(nt); }catch(zErr){ console.warn('[Excel] 暂离解析失败:',zErr); }
+            }
             if(util){console.log('[Excel] 调用processUtil...'); processUtil(util);}
           }
           resolve({type:isSchedule?'schedule':'excel',name:file.name,wl:!!wl,nt:!!nt,sch,
@@ -11025,6 +11428,9 @@ function bindUploadEvents(){
       App.scheduleMap={}; App.scheduleMatrix=[];
       App.ignoredKeys.clear(); App.selectedRowKeys.clear();
       App.manualRows=[]; App.manualDeletedKeys.clear();
+      App.anomalyMap.clear(); // V9.4：清空异常
+      App.zanliMap.clear();   // V9.4：清空暂离
+      App.diyEdits = {};      // V9.4：清空 DIY 编辑值
       App.boardInited = false; // 强制重建主看板
 
       const errs=[];
@@ -11052,7 +11458,7 @@ function bindUploadEvents(){
     };
   }
 
-  const clearAll=()=>{App.rawRows=[];App.nontaskRows=[];App.utilRows=[];App.dailyData=[];App.filteredData=[];App.scheduleMap={};App.scheduleMatrix=[];App.ignoredKeys.clear();App.selectedRowKeys.clear();App.manualRows=[];App.manualDeletedKeys.clear();App.alertHidden=false;updateFileCards();calcAll();renderAll();localStorage.removeItem('bailing_data');localStorage.removeItem('bailing_schedule');};
+  const clearAll=()=>{App.rawRows=[];App.nontaskRows=[];App.utilRows=[];App.dailyData=[];App.filteredData=[];App.scheduleMap={};App.scheduleMatrix=[];App.ignoredKeys.clear();App.selectedRowKeys.clear();App.manualRows=[];App.manualDeletedKeys.clear();App.anomalyMap.clear();App.zanliMap.clear();App.alertHidden=false;updateFileCards();calcAll();renderAll();localStorage.removeItem('bailing_data');localStorage.removeItem('bailing_schedule');};
   if($('#clearAllBtn')) $('#clearAllBtn').onclick=function(){if(!confirm('清除所有数据？'))return;clearAll();};
 
   if($('#thresholdLow')) $('#thresholdLow').onchange=function(){applyFilters();saveToLocalStorage();};
@@ -11973,11 +12379,715 @@ function renderPersonSummary(){
 
 
 // ============================================================
+// V9.4：异常检测系统（P0 / P1）
+// 数据来源：6 类异常 CSV，按 (员工, 日期) 建索引，渲染管理看板时叠加高亮
+// ============================================================
+
+// 日期标准化：支持 ISO 字符串 / Excel 序列号
+function _normAnomalyDate(v){
+  if(v==null) return '';
+  var s=String(v).trim();
+  if(!s) return '';
+  if(/^\d{4}-\d{2}-\d{2}/.test(s)) return s.slice(0,10);
+  if(/^\d{5}$/.test(s) && typeof excelDateToString==='function'){ return excelDateToString(Number(s)); }
+  var dt=new Date(s);
+  if(!isNaN(dt.getTime())) return dt.toISOString().slice(0,10);
+  return '';
+}
+
+// 列查找：精确优先，其次按候选名包含匹配
+function _findCol(row, candidates){
+  var keys=Object.keys(row||{});
+  for(var i=0;i<candidates.length;i++){
+    for(var k=0;k<keys.length;k++){ if(keys[k] && keys[k].trim()===candidates[i]) return keys[k]; }
+  }
+  for(var j=0;j<candidates.length;j++){
+    for(var k2=0;k2<keys.length;k2++){ if(keys[k2] && keys[k2].indexOf(candidates[j])>=0) return keys[k2]; }
+  }
+  return null;
+}
+
+// 登记一条异常
+function addAnomaly(emp, date, level, typeKey, org){
+  if(!emp || !date) return;
+  emp=String(emp).trim(); date=String(date).trim();
+  if(!emp || !date) return;
+  var key=emp+'|'+date;
+  if(!App.anomalyMap.has(key)) App.anomalyMap.set(key,{p0:new Set(),p1:new Set(),org:org||''});
+  var rec=App.anomalyMap.get(key);
+  if(level==='p0') rec.p0.add(typeKey); else rec.p1.add(typeKey);
+  if(org && !rec.org) rec.org=org;
+}
+
+// 通用 P0 解析（出现即异常）
+function _parseP0(rows, typeKey, colDate, colEmp, colOrg){
+  if(!rows || !rows.length) return;
+  var n=0;
+  for(var i=0;i<rows.length;i++){
+    var r=rows[i];
+    var date=_normAnomalyDate(r[colDate]);
+    var emp=String(r[colEmp]||'').trim();
+    var org=String(r[colOrg]||'').trim();
+    if(!date||!emp) continue;
+    addAnomaly(emp,date,'p0',typeKey,org);
+    n++;
+  }
+  console.log('[异常P0] '+typeKey+':',n,'条');
+}
+
+// ① 旷工有非任务
+function parseAnomKuangGong(rows){
+  var d=_findCol(rows[0],['考勤日期','日期']), e=_findCol(rows[0],['姓名','姓名_喔趣','员工中文名']), o=_findCol(rows[0],['组织架构','组织']);
+  if(d&&e) _parseP0(rows,'旷工有非任务',d,e,o);
+  // V9.7：保存原始行供 DIY 编辑器预览（不存 P0/P1 摘要，存原 CSV 字段）
+  if(App.anomRawRows) App.anomRawRows.kuanggong = rows.slice();
+}
+// ② 班次内休息时长有非任务存在
+function parseAnomBanciNei(rows){
+  var d=_findCol(rows[0],['日期']), e=_findCol(rows[0],['员工中文名','姓名']), o=_findCol(rows[0],['组织架构','组织']);
+  if(d&&e) _parseP0(rows,'班次内休息有非任务',d,e,o);
+  if(App.anomRawRows) App.anomRawRows.banci_nei = rows.slice();
+}
+// ③ 班次外非任务不等于0
+function parseAnomBanciWai(rows){
+  var d=_findCol(rows[0],['提交时间（日期）','提交时间','日期']), e=_findCol(rows[0],['员工中文名','姓名']), o=_findCol(rows[0],['组织架构','组织']);
+  if(d&&e) _parseP0(rows,'班次外非任务≠0',d,e,o);
+  if(App.anomRawRows) App.anomRawRows.banci_wai = rows.slice();
+}
+// ④ 非任务与计时任务
+function parseAnomFeiJiShi(rows){
+  var d=_findCol(rows[0],['上报日期','日期']), e=_findCol(rows[0],['姓名','员工中文名']), o=_findCol(rows[0],['组织架构','组织']);
+  if(d&&e) _parseP0(rows,'非任务与计时任务',d,e,o);
+  if(App.anomRawRows) App.anomRawRows.fei_jishi = rows.slice();
+}
+// ⑤ 暂离超时（P1）：暂离总时长>阈值 或 单次(平均)>阈值
+function parseAnomZanLi(rows){
+  var cfg=App.anomalyConfig;
+  var d=_findCol(rows[0],['提交时间（日期）','提交时间','日期']);
+  var e=_findCol(rows[0],['员工中文名','姓名']);
+  var o=_findCol(rows[0],['组织架构','组织']);
+  var cDur=_findCol(rows[0],['暂离时长']);
+  var cCnt=_findCol(rows[0],['暂离次数']);
+  if(!d||!e||!cDur){ console.warn('[异常P1]暂离: 缺少必要列'); return; }
+  var n=0;
+  for(var i=0;i<rows.length;i++){
+    var r=rows[i];
+    var date=_normAnomalyDate(r[d]);
+    var emp=String(r[e]||'').trim();
+    if(!date||!emp) continue;
+    var durSec=parseFloat(r[cDur]||'0')||0;   // 数据单位为秒（与班次时长一致）
+    var cnt=parseFloat(r[cCnt]||'0')||0;
+    var durMin=durSec/60;
+    var singleMin=cnt>0?(durMin/cnt):0;
+    // V9.4：记录暂离原始值供 DIY 看板
+    var zk=emp+'|'+date;
+    if(!App.zanliMap.has(zk)) App.zanliMap.set(zk,{durMin:0,cnt:0});
+    var zr=App.zanliMap.get(zk); zr.durMin=Math.max(zr.durMin,durMin); zr.cnt=Math.max(zr.cnt,cnt);
+    var isAnom=(durMin>cfg.zanliMaxTotalMin)||(singleMin>cfg.zanliMaxSingleMin);
+    if(isAnom){ addAnomaly(emp,date,'p1','暂离超时',String(r[o]||'').trim()); n++; }
+  }
+  // V9.7：保存原始行供 DIY 编辑器预览
+  if(App.zanliRawRows) App.zanliRawRows = rows.slice();
+  console.log('[异常P1]暂离超时:',n,'条');
+}
+// ⑥ 工时利用率缺口（P1）：出勤 - (总审核+线下计时) > 阈值
+function parseAnomUtil(rows){
+  var cfg=App.anomalyConfig;
+  var d=_findCol(rows[0],['日期']);
+  var e=_findCol(rows[0],['中文名','员工姓名','姓名']);
+  var cAtt=_findCol(rows[0],['出勤时长(小时)','出勤时长']);
+  var cRev=_findCol(rows[0],['总审核时长(小时)','总审核时长']);
+  var cTimed=_findCol(rows[0],['线下计时任务时长(小时)','线下计时任务时长']);
+  if(!d||!e||!cAtt||!cRev||!cTimed){ console.warn('[异常利用率] 缺少必要列'); return; }
+  var n=0;
+  for(var i=0;i<rows.length;i++){
+    var r=rows[i];
+    var date=_normAnomalyDate(r[d]);
+    var emp=String(r[e]||'').trim();
+    if(!date||!emp) continue;
+    var att=parseFloat(r[cAtt]||'0')||0;
+    var rev=parseFloat(r[cRev]||'0')||0;
+    var timed=parseFloat(r[cTimed]||'0')||0;
+    var gap=att-(rev+timed);
+    if(gap>cfg.utilGapMinHour){ addAnomaly(emp,date,'p1','利用率缺口', String(r['部门']||'').trim()); n++; }
+  }
+  console.log('[异常利用率]缺口>'+cfg.utilGapMinHour+'h:',n,'条');
+}
+
+// 异常统计
+function getAnomalySummary(){
+  var p0=0,p1=0;
+  App.anomalyMap.forEach(function(rec){
+    if(rec.p0.size) p0++;
+    if(rec.p1.size) p1++;
+  });
+  return {p0:p0,p1:p1,total:App.anomalyMap.size};
+}
+
+// V9.4：阈值配置加载 / 应用（持久化到 localStorage）
+function loadAnomalyConfig(){
+  try{
+    var s=localStorage.getItem('bailing_anomaly_config');
+    if(s){ var p=JSON.parse(s); if(p&&typeof p==='object') Object.assign(App.anomalyConfig, p); }
+  }catch(e){ console.warn('[异常配置] 读取失败:', e.message); }
+  if($('#cfgZanliTotal')) $('#cfgZanliTotal').value=App.anomalyConfig.zanliMaxTotalMin;
+  if($('#cfgZanliSingle')) $('#cfgZanliSingle').value=App.anomalyConfig.zanliMaxSingleMin;
+  if($('#cfgUtilGap')) $('#cfgUtilGap').value=App.anomalyConfig.utilGapMinHour;
+}
+function applyAnomalyConfig(){
+  var t=parseFloat($('#cfgZanliTotal')?.value);
+  var s=parseFloat($('#cfgZanliSingle')?.value);
+  var g=parseFloat($('#cfgUtilGap')?.value);
+  if(!isNaN(t)&&t>=0) App.anomalyConfig.zanliMaxTotalMin=t;
+  if(!isNaN(s)&&s>=0) App.anomalyConfig.zanliMaxSingleMin=s;
+  if(!isNaN(g)&&g>=0) App.anomalyConfig.utilGapMinHour=g;
+  try{ localStorage.setItem('bailing_anomaly_config', JSON.stringify(App.anomalyConfig)); }catch(e){}
+  _fsShowSyncHint('异常阈值已更新', 2000);
+  if(typeof renderManageBoard==='function') renderManageBoard();
+}
+
+// V9.5：DIY 看板指标引擎（重构：中文姓名主键 + 纯中文显示 + 可编辑指标）
+// ============================================================
+
+// 字段名映射表：内部变量名 → 中文显示名（用户只看中文）
+var _DIY_FIELD_LABELS = {
+  // dailyData (工作量) 字段
+  'totalStd': '标准条 [总和]', 'tongStd': '通航审核量（不含三审）', 'tong3Std': '通航三审审核量',
+  'nontongStd': '非通航任务量 [总和]', 'meterStd': '计量任务标准条',
+  'timingStd': '计时任务标准条', 'nontaskStd': '非任务标准条',
+  'org': '组织架构', 'empEn': '员工英文名', 'uin': '员工UIN',
+  'emp': '员工中文名', 'date': '日期',
+  // utilRows (工时利用率) 字段
+  '_utilRate': '工时利用率(%)', '_utilRateRaw': '工时利用率(原始值)',
+  '_attendH': '出勤时长(小时)', '_tongH': '通航审核时长(小时)',
+  '_offlineTimingH': '线下计时任务时长(小时)', '_nontaskH': '非任务时长(小时)',
+  '_measureH': '线下计量任务时长(小时)', '_chineseName': '中文名',
+  '_emp': '员工姓名/员工中文名', '_uin': '员工UIN', '_org': '部门/组织架构',
+  '_dateStr': '日期', '_isAbnormal': '是否利用率异常', '_utilLevel': '利用率等级',
+  // nontaskRows (非任务工时统计) 字段
+  '_minutes': '任务时长(分钟)', '_task': '任务名称', '_empEn': '员工英文名',
+  '_start': '开始时间', '_end': '结束时间',
+  // zanli (暂离) 特殊
+  'both': '暂离(时长&次数)', 'durMin': '暂离时长(分钟)', 'cnt': '暂离次数',
+  // 聚合占位
+  'sum': '非任务总时长(分钟)'
+};
+// 反向查找：内部名 → 中文（找不到就返回原值）
+function _diyFieldLabel(field){
+  return _DIY_FIELD_LABELS[field] || field;
+}
+
+// V9.5：从行数据中提取中文姓名（每个数据源的中文字段列不同）
+function _diyCnName(row, source){
+  if(source==='daily') return row.emp||'';
+  if(source==='util') return row._chineseName||row._emp||'';
+  if(source==='nontask') return row._emp||'';
+  if(source==='zanli') return row._emp||'';  // zanliMap key 的 emp 部分
+  return row._emp||row._chineseName||'';
+}
+// 提取组织架构
+function _diyOrg(row, source){
+  if(source==='daily') return row.org||'';
+  if(source==='util') return row._org||'';
+  if(source==='nontask') return row._org||'';
+  return '';
+}
+
+// V9.5：生成匹配 key（中文姓名优先，加 org 兜底，最后英文）
+function _diyMatchKey(cnName, org, date, enName){
+  var ks=[];
+  if(cnName&&date) {
+    ks.push(cnName+'|'+date);                    // 主键：中文|日期
+    if(org) ks.push(cnName+'|'+org+'|'+date);   // 复合：中文|组织|日期
+  }
+  if(enName&&date) ks.push(enName+'|'+date);      // 兜底：英文|日期
+  return ks;
+}
+
+// V9.5：同人同日多行合并时，这些字段不能相加（ID / 比率 / 均值类）
+var _DIY_NO_SUM_FIELDS = ['uin','_uin','empUin','_empUin','_utilRate','_utilRateRaw','_utilRateFinal',
+                          '_utilRateDisplay','_overrideRate','rate','_rate','pct','_pct'];
+function _diySummableField(f){
+  if(_DIY_NO_SUM_FIELDS.indexOf(f)>=0) return false;
+  if(/uin/i.test(f)) return false;
+  if(/(rate|pct|percent|ratio|率)$/i.test(f)) return false;
+  return true;
+}
+
+function buildDiyMaps(){
+  const dailyMap=new Map(), utilMap=new Map(), nontaskMap=new Map();
+
+  // === 工作量表：同一个「人|日期」会有多行（一行一个任务，实测最多 14 行）===
+  //     必须把数值字段累加，否则看板只取到最后一行 → 量级严重偏小
+  for(const d of (App.dailyData||[])){
+    if(!d.emp||!d.date) continue;
+    const dk=d.emp+'|'+d.date;
+    const prev=dailyMap.get(dk);
+    if(!prev){ dailyMap.set(dk, Object.assign({}, d)); continue; }
+    for(const f in d){
+      if(typeof d[f]==='number' && _diySummableField(f)) prev[f]=(Number(prev[f])||0)+d[f];
+    }
+  }
+
+  // === 工时利用率：先用「中文名|日期」聚合成标准行，再按候选 key 建索引 ===
+  const utilCanon=new Map();   // pk -> 聚合后的行
+  for(const u of (App.utilRows||[])){
+    var cn=_diyCnName(u,'util'), org=_diyOrg(u,'util'), en=u._emp;
+    if(!cn&&!en) continue;
+    var pk=(cn||en)+'|'+(u._dateStr||'');
+    if(pk==='|'||pk.indexOf('|')<0) continue;
+    var pv=utilCanon.get(pk);
+    if(!pv){
+      pv=Object.assign({}, u); pv.__org=org; pv.__en=en;
+      utilCanon.set(pk, pv);
+    }else{
+      for(const f in u){ if(typeof u[f]==='number' && _diySummableField(f)) pv[f]=(Number(pv[f])||0)+u[f]; }
+      if(!pv.__org) pv.__org=org;
+      if(!pv.__en)  pv.__en=en;
+    }
+  }
+  utilCanon.forEach(function(pv,pk){
+    var cn2=_diyCnName(pv,'util'), en2=pv.__en||pv._emp;
+    var keys=_diyMatchKey(cn2, pv.__org, pv._dateStr, en2);
+    for(const k of keys){ if(k!=='|'&&k.indexOf('|')>=0&&!utilMap.has(k)) utilMap.set(k,pv); }
+  });
+  for(const nr of (App.nontaskRows||[])){
+    var cn2=_diyCnName(nr,'nontask'), org2=_diyOrg(nr,'nontask'), en2=nr._empEn;
+    var keys2=_diyMatchKey(cn2, org2, nr._dateStr, en2);
+    for(const k of keys2){
+      if(k==='|'||k.indexOf('|')<0) continue;
+      // V9.7：nontaskMap 存 row-like 对象（_minutes=当日分钟累计，_taskList=任务名列表），
+      //       让 computeDiyMetric 能按 m.field 正常取值（之前只存了 number）
+      if(!nontaskMap.has(k)){
+        nontaskMap.set(k, {_minutes:0, _taskList:[], _org:org2, _emp:cn2, _dateStr:nr._dateStr});
+      }
+      var rec=nontaskMap.get(k);
+      rec._minutes += (Number(nr._minutes)||0);
+      if(nr._task && rec._taskList.indexOf(nr._task)<0) rec._taskList.push(nr._task);
+    }
+  }
+  App.diyMaps={ dailyMap: dailyMap, utilMap: utilMap, nontaskMap: nontaskMap, zanliMap: App.zanliMap };
+  // V9.5.1：同步重建公式上下文索引（数据变了必须一起重建）
+  try{ buildDiyCtxMap(); }catch(e){ console.warn('[DIY] buildDiyCtxMap 失败', e); }
+}
+
+// 7 预设指标
+function _defaultDiyMetrics(){
+  return [
+    // V9.5.1：总标准条 = 四项加权公式（★ 不能简单取工作量表的「标准条」列）
+    //   ① 线上工作量 / 管理效能 × 1000     ② 线下工作量 / 管理效能 × 1000
+    //   ③ 线下计时任务（分钟）/ 60 × 125   ④ 非任务时长（分钟）/ 60 × 125
+    //   注：系数 1000 = 8小时 × 125标准条/小时（管理效能单位为「条/天」，已用 5795 条样本验证）
+    //   注：每个任务行的管理效能不同 → 必须逐行折算后再求和，故直接用已折算好的 daily_线上/线下标准条
+    { key:'total_std', label:'总标准条', unit:'条', source:'formula',
+      type:'formula',
+      formula: 'daily_线上标准条 + daily_线下标准条 + daily_计时标准条 + nontask_标准条',
+      dir:'high', colorRules:[ {op:'<', v:0, bg:'#f8fafc', color:'#94a3b8'} ] },
+    { key:'nontask_h', label:'非任务标准条(时长)', unit:'小时', source:'formula',
+      type:'formula',
+      formula: 'nontask_总分钟 / 60',
+      dir:'neutral', colorRules:[] },
+    { key:'timing_h', label:'计时任务标准条(时长)', unit:'小时', source:'util', field:'_offlineTimingH', type:'number',
+      dir:'high', colorRules:[] },
+    { key:'audit_cnt', label:'审核量标准条(量级)', unit:'条', source:'daily', field:'totalStd', type:'number',
+      dir:'high', colorRules:[] },
+    { key:'util_rate', label:'工时利用率', unit:'%', source:'util', field:'_utilRate', type:'number',
+      dir:'high', colorRules:[] },
+    // V9.6：双值（时长+次数）—— 时长单位默认「分」（紧凑显示），次数单位「次」
+    //   异常判定在 evalDiyColor 里按 anomalyConfig 阈值自动着色（无需手填 colorRules）
+    { key:'zanli', label:'暂离(时长&次数)', unit:'分钟', durUnit:'分', cntUnit:'次',
+      source:'zanli', field:'both', type:'dual',
+      dir:'neutral', colorRules:[] },
+    { key:'audit_h', label:'审核时长', unit:'小时', source:'util', field:'_tongH', type:'number',
+      dir:'high', colorRules:[] }
+  ];
+}
+
+// 取值（返回 number 或 {durMin,cnt} 或 null）
+// V9.5：中文姓名主键匹配，与 buildDiyMaps 对称
+// V9.5.1：新增 formula 类型，支持自定义表达式
+
+// ============================================================
+// V9.5.1：公式上下文（一次性预建「人|日」索引，供公式指标 O(1) 取值）
+// 变量统一用「中文业务名」，与用户口径一一对应，公式可读可改
+// ============================================================
+
+// 每个可用变量：变量名 → 中文说明（UI 里做可点击插入的候选列表）
+var _DIY_FORMULA_VARS = [
+  ['emp','员工姓名'], ['date','日期'],
+  // —— 工作量表（百灵工作量统计）逐行按各自「管理效能」折算后求和 ——
+  ['daily_线上工作量','线上工作量：通航审核量(不含三审)+三审，单位=条'],
+  ['daily_线下工作量','线下工作量：ilabel+质检+开平+非通航+转单+万象，单位=条'],
+  ['daily_通航审核量','通航审核量(不含三审)，条'],
+  ['daily_三审审核量','通航三审审核量，条'],
+  ['daily_ilabel审核量','ilabel审核量，条'],
+  ['daily_质检量','ilabel质检量，条'],
+  ['daily_开平审核量','开平审核量，条'],
+  ['daily_非通航任务量','非通航任务量，条'],
+  ['daily_转单量','iLabel转单量，条'],
+  ['daily_万象审核量','万象审核量，条'],
+  ['daily_任务时长分钟','计时任务时长，分钟'],
+  ['daily_管理效能','管理效能（条/天，按产量加权调和平均）'],
+  ['daily_线上标准条','线上工作量/管理效能×1000（已逐行折算，标准条）'],
+  ['daily_线下标准条','线下工作量/管理效能×1000（已逐行折算，标准条）'],
+  ['daily_计时标准条','任务时长分钟/60×125（标准条）'],
+  ['daily_工作量标准条','源表自带「标准条 [总和]」列求和'],
+  ['daily_任务行数','该人该日的任务行数'],
+  // —— 工时利用率表（云雀工时利用率） ——
+  ['util_出勤时长','出勤时长，小时'],
+  ['util_通航审核时长','通航审核时长，小时'],
+  ['util_线下计量时长','线下计量任务时长，小时'],
+  ['util_线下计时时长','线下计时任务时长，小时'],
+  ['util_非任务时长','非任务时长，小时（注意：联营基地该列≈出勤）'],
+  ['util_非任务净时长','非任务净时长=出勤−通航审核，小时'],
+  ['util_总审核时长','总审核时长，小时'],
+  ['util_线下时长之和','线下时长之和，小时'],
+  ['util_线下含非任务','线下时长之和_含非任务，小时'],
+  ['util_工时利用率','工时利用率，%'],
+  ['util_线上工时利用率','线上工时利用率，%'],
+  ['util_管理效能标准条','管理效能标准条'],
+  ['util_通航标准条','通航标准条'],
+  ['util_ilabel标准条','ilabel标准条'],
+  ['util_mp标准条','mp标准条'],
+  ['util_质检标准条','ilabel质检标准条'],
+  ['util_转单标准条','ilabel转单标准条'],
+  ['util_通航平台审核条','通航平台审核条，条'],
+  ['util_ilabel平台审核条','ilabel平台审核条，条'],
+  ['util_mp平台审核条','mp平台审核条，条'],
+  // —— 非任务工时统计 ——
+  ['nontask_总分钟','非任务总时长，分钟（值班+培训+考试+开会+其他+客观+还休）'],
+  ['nontask_值班分钟','值班，分钟'], ['nontask_培训分钟','培训，分钟'],
+  ['nontask_考试分钟','考试，分钟'], ['nontask_开会分钟','开会，分钟'],
+  ['nontask_其他审核任务分钟','其他审核任务，分钟'],
+  ['nontask_客观原因分钟','客观原因无法审核，分钟'],
+  ['nontask_还休分钟','还休，分钟'],
+  ['nontask_标准条','非任务总分钟/60×125（标准条）'],
+  // —— 暂离 ——
+  ['zanli_时长','暂离时长，分钟'], ['zanli_次数','暂离次数']
+];
+
+// 是否由 V9.5.1 之后的代码解析（决定能否拿到 ilabel/质检/开平/转单/万象 等产量列）
+function _diyHasNewCols(){
+  var rs=App.rawRows||[];
+  for(var i=0;i<rs.length;i++){ if(rs[i]._ilabel!==undefined) return true; }
+  return false;
+}
+
+function _diyNewCtx(emp, date){
+  var c={ emp:emp, date:date };
+  for(var i=2;i<_DIY_FORMULA_VARS.length;i++) c[_DIY_FORMULA_VARS[i][0]]=0;
+  // 逐行折算累加器（效能每行不同，必须先除后加）
+  c.__onStd=0; c.__offStd=0; c.__volSum=0; c.__volEffSum=0; c.__hasDaily=false;
+  return c;
+}
+
+// 预建索引：key = 中文名|日期，另外登记英文名|日期 作为别名
+function buildDiyCtxMap(){
+  var ctxMap=new Map();
+  var _DIY_HAS_NEW_COLS=_diyHasNewCols();
+  var reg=function(c, alias){
+    if(!alias) return;
+    var k=alias+'|'+c.date;
+    if(!ctxMap.has(k)) ctxMap.set(k, c);
+  };
+  var get=function(cn, en, date){
+    var key=(cn||en||'')+'|'+date;
+    if(!cn && !en) return null;
+    var c=ctxMap.get(key);
+    if(!c){ c=_diyNewCtx(cn||en, date); ctxMap.set(key, c); }
+    return c;
+  };
+  var cnOf=function(en){ return (App.enToCnMap&&App.enToCnMap.get(en))||en; };
+
+  // ---------- 1) 工作量表（App.rawRows，任务粒度） ----------
+  for(const r of (App.rawRows||[])){
+    if(!r._dateStr) continue;
+    var cn=r._emp || cnOf(r._empEn) || '';
+    if(!cn && r._uin && App.uinToEmpMap) cn=App.uinToEmpMap.get(r._uin)||'';
+    if(!cn) continue;
+    var c=get(cn, r._empEn, r._dateStr);
+    if(!c) continue;
+    reg(c, r._empEn); if(r._uin) reg(c, r._uin);
+    var eff=Number(r._eff)||0;
+    var on =(Number(r._tong)||0)+(Number(r._tong3)||0);
+    var off=(Number(r._ilabel)||0)+(Number(r._qc)||0)+(Number(r._kaiping)||0)
+           +(Number(r._nontong)||0)+(Number(r._zhuan)||0)+(Number(r._wanxiang)||0);
+    var min=Number(r._minutes)||0;
+    c['daily_通航审核量']+=Number(r._tong)||0;
+    c['daily_三审审核量']+=Number(r._tong3)||0;
+    c['daily_ilabel审核量']+=Number(r._ilabel)||0;
+    c['daily_质检量']+=Number(r._qc)||0;
+    c['daily_开平审核量']+=Number(r._kaiping)||0;
+    c['daily_非通航任务量']+=Number(r._nontong)||0;
+    c['daily_转单量']+=Number(r._zhuan)||0;
+    c['daily_万象审核量']+=Number(r._wanxiang)||0;
+    c['daily_任务时长分钟']+=min;
+    c['daily_工作量标准条']+=Number(r._origStd)||0;
+    c['daily_任务行数']+=1;
+    c.__hasDaily=true;
+    if(eff>0){
+      // ★ 关键：每个任务行的「管理效能」不同，必须先除后加，不能先加总再除
+      c.__onStd  += on /eff*1000;
+      c.__offStd += off/eff*1000;
+      c.__volSum += (on+off);
+      c.__volEffSum += (on+off)/eff;
+    }
+    c['daily_计时标准条'] += min/60*125;
+  }
+  // 收尾：加权调和平均效能
+  ctxMap.forEach(function(c){
+    c['daily_线上工作量']=c['daily_通航审核量']+c['daily_三审审核量'];
+    c['daily_线下工作量']=c['daily_ilabel审核量']+c['daily_质检量']+c['daily_开平审核量']
+                          +c['daily_非通航任务量']+c['daily_转单量']+c['daily_万象审核量'];
+    // 兼容旧缓存：老 localStorage 数据没有 V9.5.1 新增的产量列（ilabel/质检/开平/转单/万象）
+    // 注意：必须判断「字段是否存在」，不能判断「折算结果是否为 0」
+    //       —— 有些任务行管理效能=0，折算结果本来就是 0，用 0 判断会误伤并翻倍
+    if(!_DIY_HAS_NEW_COLS && c.__onStd===0 && c.__offStd===0 && c['daily_工作量标准条']>0){
+      c.__onStd = c['daily_工作量标准条'];
+    }
+    c['daily_线上标准条']=c.__onStd;
+    c['daily_线下标准条']=c.__offStd;
+    c['daily_管理效能']=c.__volEffSum>0 ? (c.__volSum/c.__volEffSum) : 0;
+  });
+
+  // ---------- 2) 工时利用率表 ----------
+  for(const u of (App.utilRows||[])){
+    if(!u._dateStr) continue;
+    var cn2=u._chineseName || cnOf(u._emp) || u._emp || '';
+    var c2=get(cn2, u._emp, u._dateStr);
+    if(!c2) continue;
+    reg(c2, u._emp); if(u._uin) reg(c2, u._uin);
+    c2['util_出勤时长']      += Number(u._attendH)||0;
+    c2['util_通航审核时长']  += Number(u._tongH)||0;
+    c2['util_线下计量时长']  += Number(u._measureH)||0;
+    c2['util_线下计时时长']  += Number(u._offlineTimingH)||0;
+    c2['util_非任务时长']    += Number(u._nontaskH)||0;
+    c2['util_工时利用率']     = (u._utilRate===null||u._utilRate===undefined) ? c2['util_工时利用率'] : Number(u._utilRate);
+    c2['util_非任务净时长']  += Number(u._nontaskNetH)||0;
+    c2['util_总审核时长']    += Number(u._auditTotalH)||0;
+    c2['util_线下时长之和']  += Number(u._offlineSumH)||0;
+    c2['util_线下含非任务']  += Number(u._offlineSumNontaskH)||0;
+    c2['util_线上工时利用率']+= Number(u._onlineUtil)||0;
+    c2['util_管理效能标准条']+= Number(u._effStd)||0;
+    c2['util_通航标准条']    += Number(u._stdTong)||0;
+    c2['util_ilabel标准条']  += Number(u._stdIlabel)||0;
+    c2['util_mp标准条']      += Number(u._stdMp)||0;
+    c2['util_质检标准条']    += Number(u._stdQc)||0;
+    c2['util_转单标准条']    += Number(u._stdTransfer)||0;
+    c2['util_通航平台审核条'] += Number(u._platTong)||0;
+    c2['util_ilabel平台审核条']+= Number(u._platIlabel)||0;
+    c2['util_mp平台审核条']  += Number(u._platMp)||0;
+  }
+
+  // ---------- 3) 非任务工时统计（按任务类别拆分） ----------
+  var NT_CAT=[['值班','nontask_值班分钟'],['培训','nontask_培训分钟'],['考试','nontask_考试分钟'],
+              ['开会','nontask_开会分钟'],['其他审核任务','nontask_其他审核任务分钟'],
+              ['客观原因','nontask_客观原因分钟'],['还休','nontask_还休分钟']];
+  for(const nr of (App.nontaskRows||[])){
+    if(!nr._dateStr) continue;
+    var cn3=nr._emp || cnOf(nr._empEn) || '';
+    if(!cn3 && nr._uin && App.uinToEmpMap) cn3=App.uinToEmpMap.get(nr._uin)||'';
+    if(!cn3) continue;
+    var c3=get(cn3, nr._empEn, nr._dateStr);
+    if(!c3) continue;
+    reg(c3, nr._empEn); if(nr._uin) reg(c3, nr._uin);
+    var m=Number(nr._minutes)||0, t=String(nr._task||'');
+    c3['nontask_总分钟']+=m;
+    for(const pair of NT_CAT){ if(t.indexOf(pair[0])>=0){ c3[pair[1]]+=m; break; } }
+  }
+  ctxMap.forEach(function(c){ c['nontask_标准条']=c['nontask_总分钟']/60*125; });
+
+  // ---------- 4) 暂离 ----------
+  if(App.zanliMap&&App.zanliMap.forEach){
+    App.zanliMap.forEach(function(z, k){
+      var p=String(k).split('|'); if(p.length<2) return;
+      var c4=get(p[0], '', p[1]); if(!c4) return;
+      c4['zanli_时长']=Number(z&&z.durMin)||0;
+      c4['zanli_次数']=Number(z&&z.cnt)||0;
+    });
+  }
+
+  App.diyCtxMap=ctxMap;
+  return ctxMap;
+}
+
+// 取某个 (emp, date) 的公式上下文（带英文名 / 工号 兜底查找）
+function _diyBuildFormulaContext(emp, date){
+  if(!App.diyCtxMap) buildDiyCtxMap();
+  var map=App.diyCtxMap||new Map();
+  var key=emp+'|'+date;
+  if(map.has(key)) return map.get(key);
+  // 兜底1：英文名反查
+  var en=(App.empEnMap&&App.empEnMap.get(emp))||'';
+  if(en && map.has(en+'|'+date)) return map.get(en+'|'+date);
+  var uin=(App.empUinMap&&App.empUinMap.get(emp))||'';
+  if(uin && map.has(uin+'|'+date)) return map.get(uin+'|'+date);
+  // 兜底2：扫描同日期、名字互为前缀（历史兼容）
+  var found=null;
+  map.forEach(function(v,k){ if(found) return; var p=k.split('|'); if(p[p.length-1]===date && (p[0]===emp||k.indexOf(emp)>=0)) found=v; });
+  return found || _diyNewCtx(emp, date);
+}
+
+function computeDiyMetric(m, emp, date){
+  // V9.5.1：公式类型 → 构建上下文并求值
+  if(m.type==='formula' && m.formula){
+    try{
+      var ctx=_diyBuildFormulaContext(emp, date);
+      var fn=new Function('with(this){ return '+m.formula+'; }');
+      var result=fn.call(ctx);
+      if(result===undefined||result===null) return null;
+      return Number(result);
+    }catch(e){
+      console.warn('[DIY公式] 计算失败 ['+m.label+'] '+e.message, {emp:emp,date:date,formula:m.formula});
+      return null;
+    }
+  }
+
+  const maps=App.diyMaps; if(!maps) return null;
+  // daily: 直接用 emp|date（dailyData 的 emp 本身就是中文）
+  if(m.source==='daily'){
+    const d=maps.dailyMap.get(emp+'|'+date); if(!d) return null;
+    if(m.fields && m.fields.length){ let s=0; for(const f of m.fields) s += Number(d[f.field]||0); return s; }
+    return Number(d[m.field]||0);
+  }
+  // util/nontask: 需要从 maps 中反向查找（emp 是中文，但 map 的 key 可能是英文）
+  if(m.source==='util'){
+    var u=maps.utilMap.get(emp+'|'+date);
+    if(!u){
+      for(const [k,v] of maps.utilMap){
+        var parts=k.split('|');
+        if(parts.length>=2 && parts[parts.length-1]===date && (parts[0]===emp || parts.slice(0,-1).join('|').indexOf(emp)>=0)){ u=v; break; }
+      }
+    }
+    if(!u) return null;
+    if(m.fields && m.fields.length){ let s=0; for(const f of m.fields) s += Number(u[f.field]||0); return s; }
+    return Number(u[m.field]||0);
+  }
+  if(m.source==='nontask'){
+    var r=maps.nontaskMap.get(emp+'|'+date);
+    if(!r){
+      for(const [k,v] of maps.nontaskMap){
+        var p=k.split('|');
+        if(p.length>=2 && p[p.length-1]===date && (p[0]===emp || p.slice(0,-1).join('|').indexOf(emp)>=0)){ r=v; break; }
+      }
+    }
+    if(!r) return null;
+    if(m.fields && m.fields.length){ let s=0; for(const f of m.fields) s += Number(r[f.field]||0); return s; }
+    return Number(r[m.field]||0);
+  }
+  if(m.source==='zanli'){
+    var z=maps.zanliMap?maps.zanliMap.get(emp+'|'+date):null; if(z) return { durMin: z.durMin, cnt: z.cnt };
+    if(maps.zanliMap){ for(const [k,zv] of maps.zanliMap){ var p=k.split('|'); if(p.length>=2 && p[p.length-1]===date && p[0]===emp) return { durMin: zv.durMin, cnt: zv.cnt }; } }
+    return null;
+  }
+  return null;
+}
+
+// 颜色规则求值（返回 {bg,color} 或 null）
+function evalDiyColor(m, raw){
+  // V9.6：内置默认配色 —— 按指标 key 走更细粒度的阈值，anomalyConfig 改了能自动跟随
+  if(m.key==='zanli' && raw && typeof raw==='object'){
+    const cfg = App.anomalyConfig||{};
+    const maxT = Number(cfg.zanliMaxTotalMin)||60;
+    const maxS = Number(cfg.zanliMaxSingleMin)||15;
+    const singleEst = raw.cnt>0 ? raw.durMin/raw.cnt : raw.durMin;
+    if(raw.durMin>maxT || singleEst>maxS) return {bg:'#fee2e2', color:'#991b1b'};   // 异常：超阈值
+    if(raw.cnt>=3 || raw.durMin>maxT*0.5) return {bg:'#fef9c3', color:'#854d0e'};   // 关注
+    return null;
+  }
+  if(m.key==='util_rate'){
+    const v = (raw && typeof raw==='object') ? raw.durMin : raw;
+    if(v>=105) return {bg:'#bbf7d0', color:'#14532d'};   // 超额（亮绿）
+    if(v>=100) return {bg:'#dcfce7', color:'#15803d'};   // 达标
+    if(v>=80)  return null;                                // 正常
+    if(v>=60)  return {bg:'#fef9c3', color:'#854d0e'};   // 偏低
+    return {bg:'#fee2e2', color:'#991b1b'};               // 严重低
+  }
+  if(m.colorRules && m.colorRules.length){
+    const v = (typeof raw==='object' && raw!==null) ? raw.durMin : raw;
+    for(const r of m.colorRules){
+      if(r.op==='<'  && v<r.v)  return {bg:r.bg, color:r.color};
+      if(r.op==='<=' && v<=r.v) return {bg:r.bg, color:r.color};
+      if(r.op==='>'  && v>r.v)  return {bg:r.bg, color:r.color};
+      if(r.op==='>=' && v>=r.v) return {bg:r.bg, color:r.color};
+    }
+  }
+  return null;
+}
+
+// DIY 指标持久化
+// V9.5.1：预设指标升级时（比如「总标准条」改成公式），必须让用户已存的配置也跟着升级，
+//         否则老数据一直覆盖新预设，用户永远看不到修复。
+var _DIY_PRESET_VER = 5;   // 每次改 _defaultDiyMetrics 里预设的公式/口径就要 +1
+                                 // v5：非任务标准条(时长) 从「单字段 sum=0 bug」改 formula 'nontask_总分钟/60'，单位改小时
+function loadDiyMetrics(){
+  var saved=null;
+  try{
+    var s=localStorage.getItem('bailing_diy_metrics');
+    if(s){ var p=JSON.parse(s); if(Array.isArray(p)&&p.length) saved=p; }
+  }catch(e){ console.warn('[DIY] 读取指标失败:', e.message); }
+  if(!saved) return _defaultDiyMetrics();
+
+  var ver=0;
+  try{ ver=parseInt(localStorage.getItem('bailing_diy_preset_ver')||'0',10)||0; }catch(e){}
+  if(ver>=_DIY_PRESET_VER) return saved;
+
+  // 版本落后：把「仍是出厂配置」的预设指标替换为新版本，用户自建/改过的指标原样保留
+  try{
+    var defs=_defaultDiyMetrics();
+    var defMap={}; defs.forEach(function(d){ defMap[d.key]=d; });
+    var oldMap={}; saved.forEach(function(d){ oldMap[d.key]=d; });
+    // V9.7：迁移映射（key 改名/语义变化）—— 老 key 升级到新 key，并把 diyEdits 里的数据一起搬
+    var KEY_MIGRATION = { nontask_min: 'nontask_h' };
+    saved = saved.map(function(m){
+      if(KEY_MIGRATION[m.key]){
+        var newKey = KEY_MIGRATION[m.key];
+        var d = defMap[newKey];
+        if(d){
+          console.log('[DIY] 迁移指标 '+m.key+' → '+newKey);
+          if(App.diyEdits && App.diyEdits[m.key]){
+            if(!App.diyEdits[newKey]) App.diyEdits[newKey] = App.diyEdits[m.key];
+            delete App.diyEdits[m.key];
+          }
+          return d;
+        }
+      }
+      return m;
+    });
+    var merged=saved.map(function(m){
+      var d=defMap[m.key];
+      if(!d) return m;                                   // 用户自建指标：保留
+      return d;                                          // 预设指标：直接用新版
+    });
+    // 新增的预设（老配置里没有的）补到末尾
+    defs.forEach(function(d){ if(!oldMap[d.key] && !merged.some(function(x){return x.key===d.key;})) merged.push(d); });
+    localStorage.setItem('bailing_diy_metrics', JSON.stringify(merged));
+    localStorage.setItem('bailing_diy_preset_ver', String(_DIY_PRESET_VER));
+    console.log('[DIY] 预设指标已升级到 v'+_DIY_PRESET_VER+'（自建指标已保留）');
+    return merged;
+  }catch(e){ console.warn('[DIY] 预设升级失败，沿用旧配置', e); return saved; }
+}
+function saveDiyMetrics(){
+  try{
+    localStorage.setItem('bailing_diy_metrics', JSON.stringify(App.diyMetrics));
+    localStorage.setItem('bailing_diy_preset_ver', String(_DIY_PRESET_VER));
+  }catch(e){}
+}
+function getDiyMetric(key){
+  return (App.diyMetrics||[]).find(m=>m.key===key) || null;
+}
+
 // V9.1：管理看板（Google Sheet 风格矩阵表）
 // ============================================================
 
 // V9.3.1：当前选中的 sheet 索引（从 GSHEET_CONFIG.sheets 动态驱动，不再写死 jialan/h1）
 var _mgrCurrentSheetIdx = 0;
+// V9.6：DIY 看板独立的项目索引（默认跟随主看板，但用户可在 DIY 内自由切换）
+var _diySheetIdx = 0;
+function _syncDiyFromMgr(){
+  // 主看板切项目时，同步给 DIY（但不反向覆盖用户在 DIY 内的选择）
+  _diySheetIdx = _mgrCurrentSheetIdx;
+}
 
 // V9.3.1：从 GSHEET_CONFIG.sheets 动态生成管理看板分组 tab
 function renderMgrTabs(){
@@ -11988,12 +13098,17 @@ function renderMgrTabs(){
   container.innerHTML = sheets.map(function(s, i){
     var label = s.org || s.prefix || ('组' + (i+1));
     var active = (i === _mgrCurrentSheetIdx) ? ' active' : '';
-    return '<button id="mgrTab'+i+'" class="mgr-group-tab'+active+' px-3 py-1 rounded-md text-xs font-semibold" onclick="switchMgrGroup('+i+')">'+escHtml(label)+'</button>';
+    // V9.6：每个 tab 都加一个「跳到 DIY」入口按钮，一键切到 DIY 并锁定本项目
+    return '<div class="inline-flex items-center bg-white border border-gray-200 rounded-lg mr-1 overflow-hidden">'+
+             '<button id="mgrTab'+i+'" class="mgr-group-tab'+active+' px-3 py-1 text-xs font-semibold" onclick="switchMgrGroup('+i+')">'+escHtml(label)+'</button>'+
+             '<button class="px-2 py-1 text-[10px] text-blue-500 hover:bg-blue-50 border-l border-gray-200" onclick="jumpToDiyWithProject('+i+')" title="直接跳到 DIY 看板并锁定本项目">DIY ↗</button>'+
+           '</div>';
   }).join('');
 }
 
 function switchMgrGroup(sheetIdx){
   _mgrCurrentSheetIdx = sheetIdx;
+  _syncDiyFromMgr();   // V9.6：主看板切项目时同步 DIY（避免用户切回 DIY 时范围错位）
   document.querySelectorAll('.mgr-group-tab').forEach(function(b){ b.classList.remove('active'); });
   var btn = document.getElementById('mgrTab'+sheetIdx);
   if(btn) btn.classList.add('active');
@@ -12001,6 +13116,17 @@ function switchMgrGroup(sheetIdx){
   if($('#mgrDateFrom')) $('#mgrDateFrom').value = '';
   if($('#mgrDateTo')) $('#mgrDateTo').value = '';
   renderManageBoard();
+  // V9.6：让 DIY 项目 tabs 同步高亮（如果 DIY 已经渲染过）
+  if(typeof renderDiyProjectTabs==='function') renderDiyProjectTabs();
+}
+// V9.6：从主看板「跳到 DIY 看本项目」专用入口 —— 同时切视图+选项目
+function jumpToDiyWithProject(sheetIdx){
+  if(typeof sheetIdx==='number') _mgrCurrentSheetIdx = sheetIdx;
+  _syncDiyFromMgr();
+  // 重置日期，按新项目重算默认周期
+  if($('#diyDateFrom')) $('#diyDateFrom').value='';
+  if($('#diyDateTo'))   $('#diyDateTo').value='';
+  showView('diy');
 }
 
 // V9.3.2：org 模糊匹配 —— 容忍配置名与 CSV 实际值的常见差异
@@ -12024,6 +13150,757 @@ function _orgMatch(dataOrg, configOrg){
   if(lastSegData.replace(/[Xx×]/g,'') === lastSegCfg.replace(/[Xx×]/g,'')) return true;
   if(lastSegData.indexOf(lastSegCfg) >= 0 || lastSegCfg.indexOf(lastSegData) >= 0) return true;
   return false;
+}
+
+// ============================================================
+// V9.4：DIY 看板渲染 + 交互
+// ============================================================
+var _diyEditMode = false;
+
+// 统一取数范围（分组 / 日期 / 员工），保证看板与导出一致
+// V9.5：用中文姓名把四个数据源统一成「(人, 日期, 组织)」三元组
+//       —— 之前只扫工作量表，木柏在那个表里只有 5 人，所以看板显示不全
+function _diyCollectTuples(){
+  const t=[];
+  const push=function(cn,date,org){ cn=String(cn||'').trim(); date=String(date||'').trim(); if(cn&&date) t.push({cn:cn,date:date,org:org||''}); };
+  for(const d of (App.dailyData||[]))   push(d.emp, d.date, d.org||d._org);
+  // V9.5.1：把「工作量原始行」也纳入并集（自营/联营名单以原始任务行最全）
+  for(const r of (App.rawRows||[]))     push(r._emp, r._dateStr, r._org);
+  for(const u of (App.utilRows||[]))    push(u._chineseName||u._emp, u._dateStr, u._org);
+  for(const n of (App.nontaskRows||[])) push(n._emp, n._dateStr, n._org);
+  // 暂离只有姓名+日期，组织从其它表反查
+  if(App.zanliMap){
+    const orgByCn=new Map();
+    for(const d of (App.dailyData||[]))  if(d.emp&&!orgByCn.has(d.emp)) orgByCn.set(d.emp,d.org||d._org||'');
+    for(const u of (App.utilRows||[]))   { var c1=u._chineseName||u._emp; if(c1&&!orgByCn.has(c1)) orgByCn.set(c1,u._org||''); }
+    for(const n of (App.nontaskRows||[])) if(n._emp&&!orgByCn.has(n._emp)) orgByCn.set(n._emp,n._org||'');
+    App.zanliMap.forEach(function(v,k){ var p=String(k).split('|'); if(p.length>=2) push(p[0], p[1], orgByCn.get(p[0])||''); });
+  }
+  return t;
+}
+
+function getDiyScope(){
+  const sheets=(typeof GSHEET_CONFIG!=='undefined'&&GSHEET_CONFIG&&GSHEET_CONFIG.sheets)?GSHEET_CONFIG.sheets:[];
+  // V9.6：DIY 独立的项目索引（可在 DIY 内自由切换，不再耦合主看板）
+  const sheetCfg=sheets[_diySheetIdx]||sheets[_mgrCurrentSheetIdx]||sheets[0]||{};
+  const orgKeyword=sheetCfg.org||'';
+  const allTuples=_diyCollectTuples();
+  // V9.5：按组织架构关键字过滤（四个数据源的并集）
+  let groupData = orgKeyword ? allTuples.filter(function(t){ return _orgMatch(t.org, orgKeyword); }) : allTuples;
+  const periodType=sheetCfg.periodType||'1toEnd';
+  const dr=(typeof calcPeriodDateRange==='function')?calcPeriodDateRange(periodType,false):{from:'',to:''};
+  let defaultFrom=dr.from||'', defaultTo=dr.to||'';
+  const yesterday=new Date(); yesterday.setDate(yesterday.getDate()-1);
+  const yStr=yesterday.getFullYear()+'-'+String(yesterday.getMonth()+1).padStart(2,'0')+'-'+String(yesterday.getDate()).padStart(2,'0');
+  if(!defaultTo||defaultTo>yStr) defaultTo=yStr;
+  if(!defaultFrom){ const allDates=[...new Set(groupData.map(d=>d.date))].sort(); defaultFrom=allDates[0]; if(!defaultTo) defaultTo=allDates[allDates.length-1]; }
+  const userFrom=$('#diyDateFrom')?.value||'', userTo=$('#diyDateTo')?.value||'';
+  const dateFrom=userFrom||defaultFrom, dateTo=userTo||defaultTo;
+  const dates=[]; let cur=new Date(dateFrom), end=new Date(dateTo);
+  while(cur<=end){ dates.push(cur.toISOString().slice(0,10)); cur.setDate(cur.getDate()+1); }
+  // V9.5：人员取并集（同一人在多个表出现只算一次）
+  const empSet=new Set(groupData.map(t=>t.cn));
+  let emps=[...empSet];
+  const gOrder=App._gsheetEmpOrder||[];
+  if(gOrder.length) emps.sort(function(a,b){const ai=gOrder.indexOf(a),bi=gOrder.indexOf(b);return (ai<0?9999:ai)-(bi<0?9999:bi);}); else emps.sort();
+  return {sheetCfg:sheetCfg, orgKeyword:orgKeyword, groupData:groupData, dates:dates, emps:emps, dateFrom:dateFrom, dateTo:dateTo};
+}
+
+// 渲染指标切换页卡
+function renderDiyMetricTabs(){
+  const c=$('#diyMetricTabs'); if(!c) return;
+  if(!App.diyMetrics||!App.diyMetrics.length){ c.innerHTML='<span class="text-xs text-gray-400 px-2">无指标</span>'; return; }
+  c.innerHTML=App.diyMetrics.map(function(mm){
+    const active=(mm.key===App.diyCurrent)?' active':'';
+    return '<button id="diyTab_'+mm.key+'" class="mgr-group-tab'+active+' px-3 py-1 rounded-md text-xs font-semibold" onclick="diySwitchMetric(\''+mm.key+'\')">'+escHtml(mm.label)+'</button>';
+  }).join('');
+}
+function diySwitchMetric(key){ App.diyCurrent=key; renderDiyBoard(); }
+
+// V9.6：DIY 看板内的项目 tabs（与主看板联动但可独立切换）
+function renderDiyProjectTabs(){
+  var c=$('#diyProjectTabs'); if(!c) return;
+  var sheets=(typeof GSHEET_CONFIG!=='undefined'&&GSHEET_CONFIG&&GSHEET_CONFIG.sheets)?GSHEET_CONFIG.sheets:[];
+  if(!sheets.length){ c.innerHTML=''; return; }
+  // 同步一次，避免主看板先于 DIY 渲染
+  if(_diySheetIdx>=sheets.length) _diySheetIdx=0;
+  c.innerHTML = sheets.map(function(s, i){
+    var label = s.org || s.prefix || ('组'+(i+1));
+    var active = (i===_diySheetIdx) ? ' active' : '';
+    return '<button id="diyProjTab'+i+'" class="mgr-group-tab'+active+' px-3 py-1 rounded-md text-xs font-semibold" onclick="switchDiyProject('+i+')">'+escHtml(label)+'</button>';
+  }).join('');
+}
+function switchDiyProject(idx){
+  _diySheetIdx = idx;
+  renderDiyProjectTabs();
+  // 切项目时重置日期，让默认周期按新项目算
+  if($('#diyDateFrom')) $('#diyDateFrom').value='';
+  if($('#diyDateTo'))   $('#diyDateTo').value='';
+  renderDiyBoard();
+}
+
+// 主渲染
+function renderDiyBoard(){
+  const wrap=$('#diyMatrixContent');
+  if(!wrap) return;
+  renderDiyProjectTabs();   // V9.6：项目 tabs 先画
+  renderDiyMetricTabs();
+  const m=getDiyMetric(App.diyCurrent);
+  if(!m){ wrap.innerHTML='<div style="padding:40px;text-align:center;color:#94a3b8;">请先在「指标设置」中添加指标</div>'; return; }
+  if(!App.dailyData||!App.dailyData.length){ wrap.innerHTML='<div style="padding:40px;text-align:center;color:#94a3b8;">请先上传数据</div>'; return; }
+  const sc=getDiyScope();
+  if(!sc.groupData.length){ wrap.innerHTML='<div style="padding:40px;text-align:center;color:#94a3b8;">该组无数据</div>'; return; }
+  if(!sc.dates.length){ wrap.innerHTML='<div style="padding:40px;text-align:center;color:#94a3b8;">无有效日期范围</div>'; return; }
+
+  const colMinWidth=sc.dates.length<=10?'60px':sc.dates.length<=20?'48px':'42px';
+  const DOW=['日','一','二','三','四','五','六'];
+  let html='<div style="padding:6px 2px;font-weight:700;color:#334155;">当前指标：'+escHtml(m.label)+'（单位：'+escHtml(m.unit||'')+'）'+(m.type==='dual'?'　显示格式：时长/次数':'')+'</div>';
+  html+='<table class="mgr-matrix"><thead><tr><th class="mgr-emp-col">员工</th>';
+  for(const iso of sc.dates){
+    const dt=new Date(iso); const wk=dt.getDay()===0||dt.getDay()===6?'color:#ef4444;':'';
+    html+='<th style="min-width:'+colMinWidth+';'+wk+'"><div>'+dt.getDate()+'</div><div style="font-size:9px;color:#94a3b8;">'+DOW[dt.getDay()]+'</div></th>';
+  }
+  html+='<th class="mgr-total-col">总计</th></tr></thead><tbody>';
+
+  for(const emp of sc.emps){
+    html+='<tr><td class="mgr-emp-col">'+escHtml(emp)+'</td>';
+    let rowTotal=0;
+    for(const iso of sc.dates){
+      const base=computeDiyMetric(m, emp, iso);
+      const ek=m.key+'|'+emp+'|'+iso;
+      let isEdited=false, editVal=null;
+      if(App.diyEdits[m.key] && (ek in App.diyEdits[m.key])){ isEdited=true; editVal=App.diyEdits[m.key][ek]; }
+      let cellText='-', numVal=null, title=m.label;
+      if(base!==null || isEdited){
+        // V9.6：单元格文本带单位（% / 条 / 小时 / 分钟 等）
+        if(m.type==='dual' && base && typeof base==='object'){
+          const dur = isEdited ? Number(editVal) : base.durMin;
+          const cnt = base.cnt;
+          const du = m.durUnit || m.unit || '';
+          const cu = m.cntUnit || '次';
+          cellText = (dur===0&&cnt===0) ? '-' : (dur.toFixed(1)+du+'/'+cnt+cu);
+          numVal=dur;
+        } else {
+          const v = isEdited ? Number(editVal) : Number(base||0);
+          cellText = (v===0&&!isEdited) ? (m.unit?'-':'-') : (Math.round(v*100)/100 + (m.unit||''));
+          numVal=v;
+        }
+        if(numVal!=null) rowTotal+=numVal;
+      }
+      let cellStyle='cursor:pointer;';
+      const colInput=(m.type==='dual'&&base&&typeof base==='object')?base:numVal;
+      const col=evalDiyColor(m, colInput);
+      if(col) cellStyle='background:'+col.bg+';color:'+col.color+';font-weight:700;cursor:pointer;';
+      // V9.6：异常严重度标记（双值暂离专用：⚠ 异常，! 关注）
+      if(col && m.key==='zanli' && base && typeof base==='object'){
+        const cfg = App.anomalyConfig||{};
+        const maxT = cfg.zanliMaxTotalMin||60;
+        if(base.durMin>maxT || (base.cnt>0 && base.durMin/base.cnt > (cfg.zanliMaxSingleMin||15))){
+          cellText = '⚠ '+cellText;
+        }
+      }
+      if(isEdited) cellStyle+='outline:2px solid #f59e0b;';
+      const click=_diyEditMode?'onclick="diyEditCell(\''+escAttr(m.key)+'\',\''+escAttr(emp)+'\',\''+escAttr(iso)+'\')"':'';
+      html+='<td '+click+' style="'+cellStyle+'" title="'+escAttr(title)+(_diyEditMode?'：点击编辑':'')+'">'+cellText+'</td>';
+    }
+    html+='<td class="mgr-total-col">'+(m.unit?Math.round(rowTotal)+m.unit:Math.round(rowTotal))+'</td></tr>';
+  }
+  html+='</tbody></table>';
+  wrap.innerHTML=html;
+}
+
+function diyToggleEdit(){
+  _diyEditMode=!_diyEditMode;
+  const btn=$('#diyEditBtn'); if(btn) btn.textContent=_diyEditMode?'✅ 完成':'✏️ 编辑';
+  const hint=$('#diyEditHint'); if(hint) hint.style.display=_diyEditMode?'block':'none';
+  renderDiyBoard();
+}
+function diyEditCell(key, emp, iso){
+  if(!_diyEditMode) return;
+  const m=getDiyMetric(key); if(!m) return;
+  const base=computeDiyMetric(m, emp, iso);
+  const ek=key+'|'+emp+'|'+iso;
+  const cur=(App.diyEdits[key] && (ek in App.diyEdits[key])) ? App.diyEdits[key][ek] : (base==null?0:(m.type==='dual'?base.durMin:base));
+  const input=prompt('修改 ['+emp+' @ '+iso+'] 的「'+m.label+'」数值：', cur);
+  if(input===null) return;
+  const v=parseFloat(input);
+  if(isNaN(v)){ alert('请输入数字'); return; }
+  if(!App.diyEdits[key]) App.diyEdits[key]={};
+  App.diyEdits[key][ek]=v;
+  try{ localStorage.setItem('bailing_diy_edits', JSON.stringify(App.diyEdits)); }catch(e){}
+  renderDiyBoard();
+}
+
+// V9.5：指标配置弹窗（可视化选列模式 + 纯中文字段名 + 点击即编辑）
+var _diyActiveSrc = 'daily';  // 当前选中的数据源
+var _diySelectedField = '';   // 当前在预览表中点选的字段（兼容旧代码）
+var _diyEditingKey = null;    // V9.5：正在编辑的指标 key（null = 新增模式）
+var _diyEditingFields = [];   // V9.6：多列字段 chips，每项 {src, field}（多选自动求和）
+
+function diyShowConfig(){
+  diyCancelEdit();          // V9.5：每次打开都回到「新增」状态
+  renderDiyMetricList();
+  renderDiyFieldChips();    // V9.6：刷新 chips + 预览
+  renderDiyLivePreview();
+  // 初始化第一个 tab
+  _diyActiveSrc = 'daily';
+  diySwitchSrcTab('daily');
+  const md=$('#diyConfigModal'); if(md) md.style.display='flex';
+}
+function diyHideConfig(){ const md=$('#diyConfigModal'); if(md) md.style.display='none'; }
+// V9.5：指标卡片 — 展示名称/数据源/字段中文名，点击卡片或✏️即可修改（不需要删除重建）
+function renderDiyMetricList(){
+  const c=$('#diyMetricList'); if(!c) return;
+  if(!App.diyMetrics || !App.diyMetrics.length){
+    c.innerHTML = '<div style="text-align:center;padding:20px;color:#9ca3af;font-size:12px;">暂无指标。<br>在下方填写名称/单位/类型/字段后点「＋ 添加指标」</div>';
+    return;
+  }
+  c.innerHTML=(App.diyMetrics||[]).map(function(mm){
+    var srcTag = {'daily':'📊工作量统计','util':'⏱工时利用率','nontask':'📋非任务工时统计','zanli':'⏰暂离盘点','formula':'🧮公式（跨源聚合）'}[mm.source]||mm.source;
+    var isEditing = (_diyEditingKey===mm.key);
+    var typeCn = {'number':'单值（求和）','dual':'双值（时长+次数）','formula':'公式'}[mm.type]||mm.type;
+    // 字段展示：formula 显示公式文本；number/dual 显示 fields[] 或 field
+    var fieldHtml = '';
+    if(mm.type==='formula'){
+      fieldHtml = '<div class="text-gray-500 mt-1 text-[10px] font-mono bg-blue-50 px-2 py-1 rounded" style="word-break:break-all;line-height:1.4;">'+escHtml(mm.formula||'(空)')+'</div>';
+    } else if(mm.fields && mm.fields.length){
+      fieldHtml = '<div class="text-gray-500 mt-1">字段 ('+mm.fields.length+' 列)：'+
+        mm.fields.map(function(f){return '<span class="bg-gray-100 px-1 rounded">'+escHtml(_diyFieldLabel(f.field))+'</span>';}).join(' ')+'</div>';
+    } else {
+      fieldHtml = '<div class="text-gray-500 mt-1">字段：<span class="bg-gray-100 px-1 rounded">'+escHtml(_diyFieldLabel(mm.field||''))+'</span></div>';
+    }
+    return '<div onclick="diyStartEdit(\''+escAttr(mm.key)+'\')" '
+      +'style="border:'+(isEditing?'2px solid #3b82f6':'1px solid #e5e7eb')+';border-radius:8px;padding:10px 12px;font-size:11px;cursor:pointer;'
+      +(isEditing?'background:#eff6ff;':'background:#fff;')+'" title="点击卡片或「修改」按钮编辑这个指标">'
+      +'<div class="flex justify-between items-center">'
+      +'<b style="font-size:13px;color:#1e293b;">'+escHtml(mm.label)+'</b>'
+      +'<span class="flex gap-1">'
+      +'<button onclick="event.stopPropagation();diyStartEdit(\''+escAttr(mm.key)+'\')" class="px-2 py-0.5 text-xs text-white bg-blue-500 hover:bg-blue-600 rounded" title="修改这个指标">✏️ 修改</button>'
+      +'<button onclick="event.stopPropagation();diyRemoveMetric(\''+escAttr(mm.key)+'\')" class="px-2 py-0.5 text-xs text-white bg-red-400 hover:bg-red-500 rounded" title="删除这个指标">✕ 删除</button>'
+      +'</span></div>'
+      +'<div class="text-gray-500 mt-1">'+escHtml(srcTag)+' · 单位 '+escHtml(mm.unit||'无')+' · '+escHtml(typeCn)+'</div>'
+      +fieldHtml
+      +'</div>';
+  }).join('');
+}
+
+// V9.5.1：切换指标类型时，公式类型显示公式输入框、隐藏字段选择；其他类型反之
+function diyOnTypeChange(){
+  var t=$('#newMType').value;
+  var fRow=$('#diyFormulaRow');
+  var dRow=$('#diyFieldRow');
+  if(fRow) fRow.style.display=(t==='formula'?'':'none');
+  if(dRow) dRow.style.display=(t==='formula'?'none':'');
+  // 公式类型时自动设 source='formula'
+  if(t==='formula'){
+    _diyActiveSrc='formula';
+    document.querySelectorAll('.diy-src-tab').forEach(function(b){ b.classList.remove('active'); b.classList.add('btn-outline'); b.classList.remove('btn-primary'); });
+    var hint=$('#diySrcHint'); if(hint) hint.textContent='公式模式：不绑定单一数据源，可引用全部四个源的变量';
+    var prev=$('#diyDataPreview'); if(prev) prev.innerHTML='<p class="text-xs text-gray-400 p-3 text-center">公式模式下无需选择数据源和字段<br>直接在公式框里引用下方变量即可</p>';
+    renderDiyVarChips();
+  }
+  renderDiyLivePreview();   // V9.6：类型切换也要刷新预览
+}
+
+// V9.5.1：渲染「可点击插入」的变量候选（中文说明 + 变量名）
+function renderDiyVarChips(){
+  var box=$('#diyVarChips'); if(!box) return;
+  var q=String(($('#diyVarSearch')&&$('#diyVarSearch').value)||'').trim();
+  var html='';
+  for(var i=0;i<_DIY_FORMULA_VARS.length;i++){
+    var name=_DIY_FORMULA_VARS[i][0], desc=_DIY_FORMULA_VARS[i][1]||'';
+    if(q && (name.indexOf(q)<0 && desc.indexOf(q)<0)) continue;
+    html+='<button type="button" onclick="diyInsertVar(\''+name+'\')" '
+        + 'title="'+String(desc).replace(/"/g,'&quot;')+'｜点击插入 '+name+'" '
+        + 'style="font-size:10px;padding:2px 7px;border:1px solid #bfdbfe;background:#eff6ff;color:#1d4ed8;border-radius:999px;cursor:pointer;line-height:1.6;">'
+        + name.replace(/_/g,'_') + '</button>';
+  }
+  box.innerHTML = html || '<span class="text-[10px] text-gray-400">没有匹配的变量</span>';
+}
+// 在光标处插入变量名
+function diyInsertVar(name){
+  var ta=$('#newMFormula'); if(!ta) return;
+  var s=ta.selectionStart||0, e=ta.selectionEnd||0, v=ta.value||'';
+  ta.value = v.slice(0,s) + name + v.slice(e);
+  ta.focus();
+  var pos=s+name.length;
+  try{ ta.setSelectionRange(pos,pos); }catch(err){}
+}
+
+// V9.5：点击指标卡片 → 进入编辑模式（把现有配置回填到表单）
+function diyStartEdit(key){
+  var mm=(App.diyMetrics||[]).find(function(x){return x.key===key;});
+  if(!mm) return;
+  _diyEditingKey = key;
+  _diyActiveSrc  = mm.source||'daily';
+  _diySelectedField = mm.field||'';
+  // V9.6：把现有字段配置转换为 chips
+  _diyEditingFields = [];
+  if(mm.fields && mm.fields.length){
+    mm.fields.forEach(function(f){ _diyEditingFields.push({src:f.src||mm.source, field:f.field}); });
+  } else if(mm.field){
+    _diyEditingFields.push({src:mm.source||'daily', field:mm.field});
+  }
+  var set=function(id,v){ var e=$(id); if(e) e.value=(v===undefined||v===null)?'':v; };
+  set('#newMKey', mm.key);
+  set('#newMLabel', mm.label);
+  set('#newMUnit', mm.unit);
+  set('#newMType', mm.type||'number');
+  set('#newMField', _diyEditingFields.map(function(f){return f.field;}).join(','));
+  // V9.5.1：公式类型回填
+  var fa=$('#newMFormula'); if(fa) fa.value=mm.formula||'';
+  // 让 key 输入框只读（改名会牵连已有手工数据，这里禁止改名更安全）
+  var ke=$('#newMKey'); if(ke){ ke.readOnly=true; ke.style.background='#f1f5f9'; ke.title='编辑模式下 key 不可修改（避免已录入的手工数据丢失）'; }
+  // 切换数据源 tab + 高亮字段（公式模式跳过 tab 切换）
+  if(mm.type!=='formula'){
+    diySwitchSrcTab(_diyActiveSrc);
+  } else {
+    diyOnTypeChange();  // 显示公式框、隐藏字段选择
+  }
+  var hint=$('#diySelectedColHint');
+  if(hint) hint.textContent='正在修改指标「'+mm.label+'」，改完点「保存修改」';
+  var btn=$('#diySaveBtn'); if(btn){ btn.textContent='保存修改'; btn.classList.remove('btn-primary'); btn.classList.add('btn-success'); }
+  var t=$('#diyFormTitle'); if(t) t.textContent='✏️ 修改指标：'+mm.label;
+  renderDiyMetricList();
+  renderDiyFieldChips();
+  renderDiyLivePreview();
+  var f=$('#newMLabel'); if(f) f.focus();
+  var box=$('#diyConfigModal'); if(box) box.scrollTop=box.scrollHeight;   // 滚到表单
+}
+
+// V9.5：退出编辑模式，回到新增状态
+function diyCancelEdit(){
+  _diyEditingKey=null; _diySelectedField=''; _diyEditingFields=[];
+  $('#newMKey').value='';$('#newMLabel').value='';$('#newMField').value='';$('#newMUnit').value='';
+  var ke=$('#newMKey'); if(ke){ ke.readOnly=false; ke.style.background=''; ke.title=''; }
+  var cnf=$('#newMFieldCn'); if(cnf) cnf.value='';
+  var fa=$('#newMFormula'); if(fa) fa.value='';
+  var hint=$('#diySelectedColHint'); if(hint) hint.textContent='';
+  var btn=$('#diySaveBtn'); if(btn){ btn.textContent='＋ 添加指标'; btn.classList.add('btn-primary'); btn.classList.remove('btn-success'); }
+  var t=$('#diyFormTitle'); if(t) t.textContent='＋ 新增自定义指标（点击数据表列头快速选取字段）';
+  // 重置类型选择回默认
+  $('#newMType').value='number';
+  diyOnTypeChange();
+  renderDiyMetricList();
+  renderDiyFieldChips();
+  renderDiyLivePreview();
+  // 恢复数据源 tab
+  if(_diyActiveSrc!=='formula') renderDiyDataPreview(_diyActiveSrc);
+  else _diyActiveSrc='daily';
+}
+
+// V9.7：4 个主源 + 4 个异常盘点源 + 暂离原始明细
+var _DIY_SRC_INFO = {
+  daily:      { file:'百灵工作量统计_*.csv',                  nameCol:'员工中文名', cnt:function(){ return (App.dailyData||[]).length; },     unit:'行' },
+  util:       { file:'云雀工时利用率_人_天-工时利用率_*.csv',  nameCol:'中文名',     cnt:function(){ return (App.utilRows||[]).length; },      unit:'行' },
+  nontask:    { file:'百灵非任务工时统计_*.csv',              nameCol:'员工中文名', cnt:function(){ return (App.nontaskRows||[]).length; },   unit:'行' },
+  zanli:      { file:'百灵非任务工时统计（暂离列）/ 暂离盘点', nameCol:'员工中文名', cnt:function(){ return App.zanliMap?App.zanliMap.size:0; }, unit:'人日' },
+  kuanggong:  { file:'data_【联营】非任务盘点_旷工有非任务_*.csv',        nameCol:'姓名', cnt:function(){ return (App.anomRawRows&&App.anomRawRows.kuanggong)?App.anomRawRows.kuanggong.length:0; }, unit:'行' },
+  banci_nei:  { file:'data_【联营】非任务盘点_班次内休息时长有非任务存在_*.csv', nameCol:'员工中文名', cnt:function(){ return (App.anomRawRows&&App.anomRawRows.banci_nei)?App.anomRawRows.banci_nei.length:0; }, unit:'行' },
+  banci_wai:  { file:'data_【联营】非任务盘点_班次外非任务不等于0_*.csv',  nameCol:'员工中文名', cnt:function(){ return (App.anomRawRows&&App.anomRawRows.banci_wai)?App.anomRawRows.banci_wai.length:0; }, unit:'行' },
+  fei_jishi:  { file:'data_【联营】非任务盘点_非任务与计时任务_*.csv',   nameCol:'姓名', cnt:function(){ return (App.anomRawRows&&App.anomRawRows.fei_jishi)?App.anomRawRows.fei_jishi.length:0; }, unit:'行' }
+};
+function diySwitchSrcTab(src){
+  var oldSrc = _diyActiveSrc;
+  _diyActiveSrc = src;
+  // 更新 tab 样式
+  document.querySelectorAll('.diy-src-tab').forEach(function(b){ b.classList.remove('active'); b.classList.add('btn-outline'); b.classList.remove('btn-primary'); });
+  var activeBtn = $('#diySrcTab_'+src);
+  if(activeBtn){ activeBtn.classList.add('active'); activeBtn.classList.remove('btn-outline'); activeBtn.classList.add('btn-primary'); }
+  // 说明来源文件 / 姓名列 / 行数
+  var hint=$('#diySrcHint');
+  if(hint){
+    var inf=_DIY_SRC_INFO[src]||{};
+    var n=typeof inf.cnt==='function'?inf.cnt():0;
+    hint.innerHTML='来源文件：<b class="text-gray-600">'+escHtml(inf.file||'')+'</b>'
+      +'　｜　姓名列（用于匹配）：<b class="text-gray-600">'+escHtml(inf.nameCol||'')+'</b>'
+      +'　｜　已载入 <b class="text-gray-600">'+n+'</b> '+escHtml(inf.unit||'行')
+      +(n===0?'　<span class="text-red-400">（未载入，请先上传该文件）</span>':'');
+  }
+  // V9.7：编辑模式下不主动清空 _diyEditingFields（否则切 tab 看一下就把回填的字段删了）
+  if(_diyEditingKey && src!==oldSrc){
+    // 编辑模式：只清掉"非当前源"的字段（避免切到非任务 tab 又被同名 util 字段撞掉）
+    var stale = _diyEditingFields.filter(function(f){return f.src===oldSrc;});
+    if(stale.length){
+      _diyEditingFields = _diyEditingFields.filter(function(f){return f.src!==oldSrc;});
+      $('#newMField').value = _diyEditingFields.map(function(f){return f.field;}).join(',');
+      renderDiyFieldChips();
+    }
+  } else if(src!==oldSrc && !_diyEditingFields.length){
+    // 新增模式：chips 是空时清掉旧提示
+    var h0=$('#diySelectedColHint'); if(h0) h0.textContent='';
+  }
+  // V9.6：切换数据源（新增模式）→ 旧字段属于老源，必须清空并提示用户重新选
+  if(!_diyEditingKey && src!==oldSrc && _diyEditingFields.length){
+    // 保留同源的字段（如果两个源共有的字段），但通常不会，简化处理：全部清空
+    var keepSame = _diyEditingFields.filter(function(f){return f.src===src;});
+    if(keepSame.length !== _diyEditingFields.length){
+      _diyEditingFields = keepSame;
+      $('#newMField').value = keepSame.map(function(f){return f.field;}).join(',');
+      renderDiyFieldChips();
+      var h2=$('#diySelectedColHint');
+      if(h2){
+        if(keepSame.length){
+          h2.textContent = '已切到「'+(_DIY_SRC_INFO[src]&&_DIY_SRC_INFO[src].file)+'」，保留了 '+keepSame.length+' 个同名字段';
+        }else{
+          h2.textContent = '⚠ 已切换数据源为「'+(_DIY_SRC_INFO[src]&&_DIY_SRC_INFO[src].file)+'」，请重新点击上方表格的列头选择字段';
+        }
+      }
+    }
+  }
+  renderDiyDataPreview(src);
+  renderDiyLivePreview();
+}
+
+// V9.7：渲染数据源预览表（列头可点击选中字段，支持 4 主源 + 4 异常源 + 暂离原始行）
+function renderDiyDataPreview(src){
+  var c=$('#diyDataPreview'); if(!c) return;
+  var data, maxRows=8;
+
+  // 取数据
+  if(src==='daily')      data=App.dailyData||[];
+  else if(src==='util')   data=App.utilRows||[];
+  else if(src==='nontask')data=App.nontaskRows||[];
+  else if(src==='zanli')  data=App.zanliRawRows||[];   // V9.7：暂离原始行（含暂离时长/次数原值）
+  else if(src==='kuanggong')  data=(App.anomRawRows&&App.anomRawRows.kuanggong)||[];
+  else if(src==='banci_nei')  data=(App.anomRawRows&&App.anomRawRows.banci_nei)||[];
+  else if(src==='banci_wai')  data=(App.anomRawRows&&App.anomRawRows.banci_wai)||[];
+  else if(src==='fei_jishi')  data=(App.anomRawRows&&App.anomRawRows.fei_jishi)||[];
+
+  if(!data.length){
+    var hint=src==='zanli'?'（首次从非任务表解析暂离列时自动存；也可上传暂离盘点文件）':
+             (src==='kuanggong'||src==='banci_nei'||src==='banci_wai'||src==='fei_jishi')?
+             '（请上传 data_【联营】非任务盘点_'+({'kuanggong':'旷工有非任务','banci_nei':'班次内休息时长有非任务存在','banci_wai':'班次外非任务不等于0','fei_jishi':'非任务与计时任务'}[src])+'_*.csv）':
+             '';
+    c.innerHTML='<p class="text-xs text-gray-400 p-3 text-center">该数据源暂无数据 '+hint+'</p>';
+    return;
+  }
+
+  // 收集所有列名（取前几行的 key 并集）
+  var cols=[];
+  for(var i=0;i<Math.min(data.length,3);i++){
+    Object.keys(data[i]).forEach(function(k){ if(cols.indexOf(k)<0 && !k.startsWith('_')) cols.push(k); });
+    Object.keys(data[i]).forEach(function(k){ if(cols.indexOf(k)<0 && k.startsWith('_')) cols.push(k); });
+  }
+  // 关键字段（员工/日期/姓名/uin/组织）排前面
+  var priority=['员工中文名','姓名','姓名_喔趣','_emp','_empEn','员工英文名','日期','数据日期','考勤日期','提交时间（日期）','上报日期','_dateStr','员工UIN','员工_uin','_uin','组织架构','部门','_org','暂离时长','暂离次数','班次时长','排除请假的班次时长','加班时长','考勤时长','总审核时长(小时)','出勤时长(小时)','工时利用率(%)','utilRate','totalStd','_utilRate','_tongH','_offlineTimingH','_attendH','_nontaskH','_minutes','_task'];
+  cols.sort(function(a,b){
+    var ai=priority.indexOf(a),bi=priority.indexOf(b);
+    if(ai<0&&bi<0) return a.localeCompare(b);
+    if(ai<0)return 1;
+    if(bi<0)return -1;
+    return ai-bi;
+  });
+
+  // 构建表格 HTML —— min-width:max-content 让表格不压缩，触发横向滚动
+  var h='<div style="position:relative;">';
+  h+='<table class="text-xs" style="border-collapse:collapse;min-width:max-content;width:100%;">';
+  h+='<thead><tr>';
+  // 列头（可点击）
+  for(var ci=0;ci<cols.length;ci++){
+    var col=cols[ci];
+    var isSel=_diyEditingFields.some(function(f){return f.src===src && f.field===col;});
+    h+='<th onclick="diySelectField(\''+escAttr(col)+'\',\''+src+'\')" style="padding:6px 8px;border-bottom:2px solid #e5e7eb;text-align:left;cursor:pointer;white-space:nowrap;font-weight:500;'
+      +(isSel?'background:#3b82f6;color:#fff;border-radius:4px 4px 0 0;':'background:#f8fafc;color:#334155;')
+      +'" title="点击「'+escHtml(_diyFieldLabel(col))+'」'+(isSel?'移除该字段':'选中该字段（多选自动求和）')+'">'
+      +escHtml(_diyFieldLabel(col))+(isSel?' ✓':'')
+      +'</th>';
+  }
+  h+='</tr></thead><tbody>';
+  // 数据行（最多5行）
+  for(var ri=0;ri<Math.min(data.length,maxRows);ri++){
+    var row=data[ri];
+    h+='<tr>';
+    for(var ci2=0;ci2<cols.length;ci2){
+      var val=row[cols[ci2]];
+      var disp='';
+      if(val===null||val===undefined) disp='—';
+      else if(typeof val==='number') disp=val>=100?Math.round(val): (Number(val).toFixed(val%1===0?0:2));
+      else disp=String(val).slice(0,20);
+      var isColSel=_diyEditingFields.some(function(f){return f.src===src && f.field===cols[ci2];});
+      h+='<td style="padding:4px 6px;border-bottom:1px solid #f1f5f9;max-width:160px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;'
+        +(isColSel?'background:#eff6ff;font-weight:500;':'')
+        +'">'+escHtml(disp)+'</td>';
+      ci2++;
+    }
+    h+='</tr>';
+  }
+  h+='</tbody></table>';
+  // V9.7：横向滚动提示（右侧渐变阴影 + 底部文字）
+  h+='<div style="position:absolute;top:0;right:0;bottom:0;width:24px;background:linear-gradient(to right,rgba(255,255,255,0),rgba(229,231,235,.85));pointer-events:none;"></div>';
+  h+='</div>';
+  // 底部信息（行数 + 横向滚动提示）
+  var infoH='<div class="flex items-center justify-between mt-1 text-[10px] text-gray-400 px-1">';
+  infoH+='<span>仅显示前 '+Math.min(data.length,maxRows)+' 行（共 '+data.length+' 行）</span>';
+  infoH+='<span>共 '+cols.length+' 列 → 横向滚动查看更多</span>';
+  infoH+='</div>';
+  h+=infoH;
+  c.innerHTML=h;
+}
+
+// V9.6：用户点击列头 → toggle 加入/移出字段 chips（多列求和）
+function diySelectField(colName, src){
+  _diyActiveSrc = src;
+  var cn = _diyFieldLabel(colName);
+  var idx = _diyEditingFields.findIndex(function(f){ return f.src===src && f.field===colName; });
+  if(idx >= 0){
+    _diyEditingFields.splice(idx, 1);    // 重复点击 = 移除
+  } else {
+    _diyEditingFields.push({src: src, field: colName});
+  }
+  $('#newMField').value = _diyEditingFields.map(function(f){return f.field;}).join(',');
+  _diySelectedField = colName;
+
+  // 编辑模式下 key 不动；新增模式才自动生成（首次选第一个字段时）
+  if(!_diyEditingKey){
+    if(!$('#newMKey').value.trim() && _diyEditingFields.length===1){
+      $('#newMKey').value = src+'_'+colName.replace(/^_/,'');
+    }
+  }
+  // 自动填显示名（只在第一个字段时填，多列加「（合）」标识）
+  if(!$('#newMLabel').value.trim()){
+    if(_diyEditingFields.length === 1){
+      $('#newMLabel').value = cn;
+    } else if(_diyEditingFields.length > 1){
+      var f0 = _diyEditingFields[0];
+      $('#newMLabel').value = _diyFieldLabel(f0.field) + '（合）';
+    }
+  }
+  // 按中文列名猜单位
+  var uHint='';
+  if(/率|%/.test(cn)) uHint='%';
+  else if(/分钟/.test(cn)) uHint='分钟';
+  else if(/次数/.test(cn)) uHint='次';
+  else if(/时长|小时/.test(cn)) uHint='小时';
+  else if(/标准条|任务量|审核量|条|量|数/.test(cn)) uHint='条';
+  if(uHint && !$('#newMUnit').value.trim()) $('#newMUnit').value=uHint;
+  // zanli 源强制 dual
+  if(src==='zanli') $('#newMType').value='dual';
+
+  // 提示
+  var srcCn={'daily':'📊工作量统计','util':'⏱工时利用率','nontask':'📋非任务工时统计','zanli':'⏰暂离盘点'}[src]||src;
+  var hint=$('#diySelectedColHint');
+  if(hint){
+    if(_diyEditingFields.length === 0) hint.textContent = '';
+    else if(_diyEditingFields.length === 1) hint.textContent = '已选 1 个字段（来源：'+srcCn+'）';
+    else hint.textContent = '已选 '+_diyEditingFields.length+' 个字段（多选自动求和）';
+  }
+
+  renderDiyFieldChips();
+  renderDiyLivePreview();
+  diySwitchSrcTab(src);
+}
+
+// V9.6：渲染已选字段 chips
+function renderDiyFieldChips(){
+  var box = $('#diyFieldChips'); if(!box) return;
+  if(!_diyEditingFields.length){
+    box.innerHTML = '<span class="text-[10px] text-gray-400 px-2">点击上方表格列头选择字段（多选自动求和）</span>';
+    return;
+  }
+  box.innerHTML = _diyEditingFields.map(function(f, i){
+    var cn = _diyFieldLabel(f.field);
+    var srcBadge = {'daily':'📊工作量','util':'⏱工时','nontask':'📋非任务','zanli':'⏰暂离'}[f.src]||f.src;
+    return '<span style="display:inline-flex;align-items:center;gap:4px;background:#dbeafe;color:#1e40af;border-radius:12px;padding:2px 8px;font-size:11px;font-weight:500;">'
+         + '<span style="color:#6b7280;font-size:10px;">'+srcBadge+'</span>'+escHtml(cn)
+         + '<button onclick="_diyRemoveField('+i+')" style="background:none;border:none;color:#dc2626;font-weight:700;cursor:pointer;padding:0 2px;font-size:13px;line-height:1;" title="移除">✕</button>'
+         + '</span>';
+  }).join('');
+}
+function _diyRemoveField(idx){
+  if(idx<0 || idx>=_diyEditingFields.length) return;
+  _diyEditingFields.splice(idx, 1);
+  $('#newMField').value = _diyEditingFields.map(function(f){return f.field;}).join(',');
+  renderDiyFieldChips();
+  renderDiyLivePreview();
+}
+
+// V9.6：实时预览 —— 取当前表单配置，按前 5 人 × 前 3 日算出结果
+function renderDiyLivePreview(){
+  var box = $('#diyLivePreview'); if(!box) return;
+  var type = $('#newMType').value;
+  var label = $('#newMLabel').value.trim();
+  var unit = $('#newMUnit').value.trim();
+
+  // 组装预览用的指标对象
+  var m = {
+    key: '_preview', label: label || '预览', unit: unit,
+    type: type, source: _diyActiveSrc, fields: _diyEditingFields.slice()
+  };
+  if(m.type === 'formula'){
+    m.formula = (($('#newMFormula')||{}).value || '').trim();
+    if(!m.formula){
+      box.innerHTML = '<p class="text-xs text-gray-400 text-center py-4">填写公式后这里会显示按当前配置算出来的前几行结果</p>';
+      return;
+    }
+  } else if(m.type === 'dual'){
+    m.source = 'zanli';
+    m.fields = [];
+  } else {
+    if(!m.fields.length){
+      box.innerHTML = '<p class="text-xs text-gray-400 text-center py-4">未选字段 —— 点击上方表格列头添加</p>';
+      return;
+    }
+    if(m.fields.length === 1){ m.field = m.fields[0].field; m.source = m.fields[0].src; }
+    // 多列字段必须同源（编辑器层面简化；跨源求和不常见，先不支持）
+    m.source = m.fields[0].src;
+  }
+
+  var sc = (typeof getDiyScope==='function') ? getDiyScope() : null;
+  if(!sc || !sc.emps.length || !sc.dates.length){
+    box.innerHTML = '<p class="text-xs text-gray-400 text-center py-4">无范围数据（请确认已上传数据 + 已选项目）</p>';
+    return;
+  }
+  var emps = sc.emps.slice(0, 5);
+  var dates = sc.dates.slice(0, 3);
+
+  var h = '<table style="border-collapse:collapse;font-size:11px;width:100%;">';
+  h += '<thead><tr><th style="padding:4px 8px;text-align:left;background:#eef2ff;border-bottom:1px solid #c7d2fe;font-weight:600;">员工</th>';
+  for(const d of dates){
+    h += '<th style="padding:4px 8px;background:#eef2ff;border-bottom:1px solid #c7d2fe;text-align:center;font-weight:600;">'+escHtml(d.slice(5))+'</th>';
+  }
+  h += '</tr></thead><tbody>';
+  var anyError = false;
+  for(const e of emps){
+    h += '<tr><td style="padding:4px 8px;border-bottom:1px solid #f1f5f9;font-weight:500;background:#fafafa;">'+escHtml(e)+'</td>';
+    for(const d of dates){
+      var v = null;
+      var err = '';
+      try{ v = computeDiyMetric(m, e, d); }
+      catch(ex){ v = null; anyError = true; err = ex.message; }
+      var txt = '-';
+      var style = 'background:#fef2f2;color:#dc2626;';
+      if(v !== null && v !== undefined){
+        style = 'background:#fff;';
+        if(typeof v === 'object' && v.durMin !== undefined){
+          var du = m.durUnit || m.unit || '';
+          var cu = m.cntUnit || '次';
+          txt = (v.durMin===0&&v.cnt===0) ? '-' : (v.durMin.toFixed(1)+du+'/'+v.cnt+cu);
+        } else {
+          txt = (Math.round(Number(v)*100)/100) + (m.unit || '');
+        }
+      } else if(err){
+        txt = '⚠ '+err.slice(0,16);
+      }
+      h += '<td style="padding:4px 8px;border-bottom:1px solid #f1f5f9;text-align:center;'+style+'">'+escHtml(txt)+'</td>';
+    }
+    h += '</tr>';
+  }
+  h += '</tbody></table>';
+  if(anyError){
+    h += '<p class="text-[10px] text-red-500 mt-1 text-center">部分行报错 —— 检查公式表达式/字段名是否正确</p>';
+  }
+  box.innerHTML = h;
+}
+// V9.5：统一保存（新增 or 修改共用一套逻辑，预设指标也能直接改）
+function diySaveMetric(){
+  var key=$('#newMKey').value.trim(); var label=$('#newMLabel').value.trim();
+  var unit=$('#newMUnit').value.trim(); var type=$('#newMType').value;
+  if(!key){ alert('请填写「指标标识」'); return; }
+  if(!label){ alert('请填写「显示名称」'); return; }
+  if(type!=='formula' && !_diyEditingFields.length){ alert('请在上方数据预览表中点击列头选择字段（多选自动求和）'); return; }
+  var source=(type==='formula')?'formula':(_diyActiveSrc||'daily');
+  if(type==='formula'){ var _fa=$('#newMFormula'); formula=_fa?_fa.value.trim():''; if(!formula){ alert('请填写公式表达式'); return; } }
+  // V9.6：组装字段配置（单字段走 m.field 兼容旧数据，多字段走 m.fields[]）
+  var fieldsArr = _diyEditingFields.slice();
+  var field = fieldsArr.length===1 ? fieldsArr[0].field : '';
+  var fieldSrc = fieldsArr.length===1 ? fieldsArr[0].src : source;
+
+  var list=App.diyMetrics||[];
+  var oldKey=_diyEditingKey;
+
+  if(oldKey){
+    // ===== 修改模式 =====
+    var idx=list.findIndex(function(x){return x.key===oldKey;});
+    if(idx<0){ alert('要修改的指标不存在，可能已被删除'); diyCancelEdit(); return; }
+    // key 冲突检查（排除自己）
+    if(oldKey!==key && list.some(function(x){return x.key===key;})){ alert('标识「'+key+'」已存在，请换一个'); return; }
+    var old=list[idx];
+    var saved = {
+      key:key, label:label, unit:unit, source:(type==='formula'?'formula':fieldSrc),
+      field:field, type:type, formula:formula,
+      fields: fieldsArr.length>1 ? fieldsArr : undefined,
+      dir:(old.dir||'neutral'), colorRules:(old.colorRules||[])   // 保留配色规则
+    };
+    // 清理 undefined 字段，避免污染 localStorage
+    Object.keys(saved).forEach(function(k){ if(saved[k]===undefined) delete saved[k]; });
+    list[idx]=saved;
+    // 如果 key 改了，把已录入的手工数据一起搬到新 key 下
+    if(oldKey!==key && App.diyEdits && App.diyEdits[oldKey]){
+      App.diyEdits[key]=App.diyEdits[oldKey];
+      delete App.diyEdits[oldKey];
+      if(App.diyCurrent===oldKey) App.diyCurrent=key;
+    }
+    saveDiyMetrics();
+    renderDiyMetricTabs(); renderDiyMetricList(); renderDiyBoard();
+    diyCancelEdit();
+    var hint=$('#diySelectedColHint'); if(hint) hint.textContent='✅ 已保存修改：'+label;
+    return;
+  }
+
+  // ===== 新增模式 =====
+  if(list.some(function(x){return x.key===key;})){ alert('标识「'+key+'」已存在，请换一个'); return; }
+  var saved2 = {
+    key:key,label:label,unit:unit,
+    source:(type==='formula'?'formula':fieldSrc), field:field, type:type,
+    formula:formula, dir:'neutral', colorRules:[]
+  };
+  if(fieldsArr.length>1) saved2.fields = fieldsArr;
+  App.diyMetrics.push(saved2);
+  saveDiyMetrics(); renderDiyMetricTabs(); renderDiyMetricList(); renderDiyBoard();
+  // 清空表单（保留 source tab 选择）
+  $('#newMKey').value='';$('#newMLabel').value='';$('#newMField').value='';$('#newMUnit').value='';
+  var fa3=$('#newMFormula'); if(fa3) fa3.value='';
+  _diySelectedField=''; _diyEditingFields=[];
+  renderDiyFieldChips(); renderDiyLivePreview();
+  var hint=$('#diySelectedColHint'); if(hint) hint.textContent='✅ 已添加指标：'+label;
+  if(_diyActiveSrc!=='formula') renderDiyDataPreview(_diyActiveSrc);
+}
+function diyAddMetric(){ diySaveMetric(); }   // V9.5：兼容旧按钮 onclick
+function diyRemoveMetric(key){
+  App.diyMetrics=App.diyMetrics.filter(function(x){return x.key!==key;});
+  if(App.diyCurrent===key) App.diyCurrent=(App.diyMetrics[0]||{}).key||'';
+  delete App.diyEdits[key];
+  saveDiyMetrics(); renderDiyMetricTabs(); renderDiyMetricList(); renderDiyBoard();
+}
+function diyExport(){
+  const m=getDiyMetric(App.diyCurrent); if(!m){ alert('请先选择指标'); return; }
+  const sc=getDiyScope();
+  let csv='\uFEFF';
+  csv+='DIY看板导出 - 指标：'+m.label+'（单位：'+(m.unit||'')+'）\n';
+  csv+='员工,'+sc.dates.join(',')+',总计\n';
+  const changes=[];
+  for(const emp of sc.emps){
+    let row=emp, total=0;
+    for(const iso of sc.dates){
+      const base=computeDiyMetric(m,emp,iso);
+      const ek=m.key+'|'+emp+'|'+iso;
+      let val=null, baseVal=null;
+      if(base!==null){
+        baseVal = (m.type==='dual' && typeof base==='object') ? base.durMin : base;
+        val = baseVal;
+      }
+      if(App.diyEdits[m.key] && (ek in App.diyEdits[m.key])){
+        val=Number(App.diyEdits[m.key][ek]);
+        if(baseVal!=null) changes.push({emp:emp,date:iso,base:baseVal,edited:val});
+      }
+      let txt='-';
+      if(val!=null){ txt = (m.type==='dual'&&base&&typeof base==='object') ? (base.durMin.toFixed(1)+'/'+base.cnt) : Math.round(val); }
+      else if(base!==null && m.type==='dual' && typeof base==='object'){ txt=base.durMin.toFixed(1)+'/'+base.cnt; }
+      row+=','+txt;
+      if(val!=null) total+=Number(val);
+    }
+    row+=','+Math.round(total);
+    csv+=row+'\n';
+  }
+  csv+='\n修改详情（底表值 → 修改值）\n';
+  csv+='员工,日期,底表值,修改值\n';
+  if(changes.length===0) csv+='（无修改）\n';
+  else for(const c of changes) csv+=c.emp+','+c.date+','+c.base+','+c.edited+'\n';
+  const blob=new Blob([csv],{type:'text/csv;charset=utf-8;'});
+  const url=URL.createObjectURL(blob);
+  const a=document.createElement('a'); a.href=url; a.download='DIY看板_'+m.label+'_'+new Date().toISOString().slice(0,10)+'.csv'; a.click();
+  setTimeout(function(){URL.revokeObjectURL(url);},1000);
 }
 
 function renderManageBoard(){
@@ -12143,6 +14020,7 @@ function renderManageBoard(){
   html += '<th class="mgr-total-col">总计</th>';
   html += '</tr></thead><tbody>';
 
+  let anomalyCount = 0; // V9.4：本组异常单元格计数
   for(const emp of emps){
     html += '<tr>';
     html += '<td class="mgr-emp-col">' + escHtml(emp) + '</td>';
@@ -12185,6 +14063,18 @@ function renderManageBoard(){
         cellStyle = 'color:#94a3b8;';
       }
 
+      // V9.4：异常高亮叠加（P0 黑底红字 / P1 蓝底黄字，覆盖常规配色）
+      const _anom = App.anomalyMap.get(emp + '|' + iso);
+      if(_anom && _anom.p0.size){
+        cellStyle = 'background:#111827;color:#ef4444;font-weight:700;cursor:pointer;border-bottom:2px solid #ef4444;';
+        cellTitle = (cellTitle ? cellTitle + '；' : '') + 'P0异常：' + [..._anom.p0].join('、');
+        anomalyCount++;
+      } else if(_anom && _anom.p1.size){
+        cellStyle = 'background:#1e3a8a;color:#fde047;font-weight:700;cursor:pointer;border-bottom:2px solid #fde047;';
+        cellTitle = (cellTitle ? cellTitle + '；' : '') + 'P1异常：' + [..._anom.p1].join('、');
+        anomalyCount++;
+      }
+
       const cellContent = (isRestDay && val <= 0) ? '-' : String(valRounded);
       // 工作日都可点击（包括0），休息日有数据也可点击
       if(isWorkDay || (val > 0)){
@@ -12201,7 +14091,17 @@ function renderManageBoard(){
   }
   html += '</tbody></table>';
 
-  wrap.innerHTML = html;
+  // V9.4：异常统计摘要 + 图例（置于矩阵上方）
+  const _sum = getAnomalySummary();
+  const _legend =
+    '<div style="display:flex;flex-wrap:wrap;gap:12px;align-items:center;margin:0 0 10px 2px;font-size:11px;">'
+    + '<span style="font-weight:700;color:#334155;">异常统计：</span>'
+    + '<span style="background:#111827;color:#ef4444;padding:2px 8px;border-radius:4px;font-weight:700;">P0 ' + _sum.p0 + '</span>'
+    + '<span style="background:#1e3a8a;color:#fde047;padding:2px 8px;border-radius:4px;font-weight:700;">P1 ' + _sum.p1 + '</span>'
+    + '<span style="color:#64748b;">本组高亮单元格：' + anomalyCount + '</span>'
+    + '<span style="color:#94a3b8;">（P0=黑底红字 / P1=蓝底黄字）</span>'
+    + '</div>';
+  wrap.innerHTML = _legend + html;
 }
 
 /** 管理板：点击标准条单元格弹出详情 */
@@ -12392,6 +14292,11 @@ function showView(name){
     document.querySelector('[data-view="manage"]')?.classList.add('active');
     renderManageBoard();
   }
+  if(name==='diy'){
+    const v=$('#viewDiy');if(v){v.classList.add('active');v.setAttribute('aria-hidden','false');}
+    document.querySelector('[data-view="diy"]')?.classList.add('active');
+    renderDiyBoard();
+  }
   window.scrollTo(0,0);
 }
 
@@ -12498,6 +14403,10 @@ function loadScheduleStorage(){ if(typeof BailingPersistence!=='undefined'){Bail
 function $(sel){return document.querySelector(sel);}
 
 // ===== 绑定所有事件（必须在$定义之后）=====
+loadAnomalyConfig(); // V9.4：加载异常阈值配置
+App.diyMetrics = loadDiyMetrics(); // V9.4：加载 DIY 指标
+App.diyCurrent = (App.diyMetrics && App.diyMetrics[0]) ? App.diyMetrics[0].key : '';
+try{ var _de=localStorage.getItem('bailing_diy_edits'); if(_de) App.diyEdits=JSON.parse(_de)||{}; }catch(e){ App.diyEdits={}; }
 bindSchedImport();
 bindUploadEvents();
 
@@ -12505,7 +14414,7 @@ bindUploadEvents();
 // 初始强制只显示主看板，其他视图隐藏
 showView('dashboard');
 
-document.querySelectorAll('.nav-btn').forEach(btn=>{btn.onclick=function(){const v=this.dataset.view;if(v==='audit'||v==='schedule'||v==='manage')showView(v);else showView('dashboard');};});
+document.querySelectorAll('.nav-btn').forEach(btn=>{btn.onclick=function(){const v=this.dataset.view;if(v==='audit'||v==='schedule'||v==='manage'||v==='diy')showView(v);else showView('dashboard');};});
 
 loadFromLocalStorage();
 // V8.32：诊断日志 —— 明确打印从 localStorage 加载后的数据状态
