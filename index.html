@@ -1,4 +1,4 @@
-<!-- Bailing Dashboard V9.13 - 20260909 - 上传模式+下载离线版 -->
+<!-- Bailing Dashboard V9.14 - 20260909 - 上传模式+下载离线版 -->
 <!--
   ===== 近期版本变更 =====
   V9.5.2 (2026-08-31) 修复「非任务工时统计」被误判成异常表导致 DIY 非任务无数据；
@@ -37,6 +37,17 @@
                       → 这些人跳过 A3 timing_spike / A4 nontask_spike / A12 attend_no_data /
                         daily_below/over / period_below/over 共 6 类工作量异常
                       → 不影响 A7/A8（工时利用率）、A11（考勤）等真正的人员异常
+  V9.14  (2026-09-09) 统一异常口径（按用户给的新阈值重写）：
+                      · 工作量正常区间 [WORKLOAD_NORMAL_LOW, WORKLOAD_NORMAL_HIGH] = [900, 1250]
+                        半天按 expected/1000 比例缩放；跨日早班1 额外双向扩 ±135 容下 875/1375 这种 ±125 偏移
+                      · 利用率：<81.25% 算异常（不分等级，统一 high）。UTIL_NORMAL_HIGH 默认 130，
+                        启用了双侧检测（改成 9999 即只检下方）。V8.95 的偏离分级（low/medium/high）废弃
+                      · 暂离：单次 ≤15min 且 日总额 ≤90min（1.5h）才正常；超出任意一个就报
+                      · 审核时长过短：按出勤分级阈值——
+                          出勤 8h 时 tongH < 6.25；出勤 4h 时 < 3.25；早班1（当天/明天）时 < 5.68
+                      · 跨日早班1 在管理看板矩阵加「早」字角标（橙黄渐变）
+                      · 新增「⚙ 阈值配置」独立看板（modal）——原来挤在管理看板顶部的阈值按钮搬进来
+                      · 所有阈值都从 BAILING_RULES 读，加 loadBAilingRulesOverrides() 从 localStorage 恢复
 -->
 <!DOCTYPE html>
 <html lang="zh-CN">
@@ -47,7 +58,7 @@
 <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
 <meta http-equiv="Pragma" content="no-cache">
 <meta http-equiv="Expires" content="0">
-<title>百灵工作量仪表盘 V9.13</title>
+<title>百灵工作量仪表盘 V9.14</title>
 <link rel="stylesheet" href="vendor/tailwind.min.css">
 <script src="vendor/chart.umd.min.js"></script>
 <script src="vendor/xlsx.full.min.js"></script>
@@ -1141,15 +1152,14 @@
         </div>
         <span id="mgrPeriodLabel" class="text-xs text-gray-400"></span>
       </div>
-      <!-- V9.4：异常阈值设置（可配置） -->
-      <div class="flex items-center gap-2 flex-wrap">
-        <span class="text-xs text-gray-500 font-semibold">异常阈值：</span>
-        <label class="text-xs text-gray-500">暂离总时长&gt;<input type="number" id="cfgZanliTotal" class="w-12 border border-gray-200 rounded px-1 py-0.5 text-center" style="font-size:11px;">min</label>
-        <label class="text-xs text-gray-500">单次&gt;<input type="number" id="cfgZanliSingle" class="w-12 border border-gray-200 rounded px-1 py-0.5 text-center" style="font-size:11px;">min</label>
-        <label class="text-xs text-gray-500">利用率缺口&gt;<input type="number" id="cfgUtilGap" class="w-12 border border-gray-200 rounded px-1 py-0.5 text-center" style="font-size:11px;">h</label>
-        <button onclick="applyAnomalyConfig()" class="btn btn-outline btn-sm" style="padding:3px 8px;font-size:11px;">应用</button>
-        <button onclick="openWorkloadExemptEditor()" class="btn btn-outline btn-sm" style="padding:3px 8px;font-size:11px;background:#eef2ff;color:#4338ca;border-color:#c7d2fe;">🛡 豁免白名单(<span id="exemptCount">0</span>)</button>
-      </div>
+      <!-- V9.14：异常阈值入口（弹出独立配置看板） -->
+      <button onclick="openThresholdConfig()" class="btn btn-outline btn-sm" style="padding:4px 10px;font-size:12px;background:#fef3c7;color:#92400e;border:1px solid #fde68a;font-weight:600;">
+        ⚙ 阈值配置
+      </button>
+      <!-- V9.13：豁免白名单入口（也搬进独立看板） -->
+      <button onclick="openWorkloadExemptEditor()" class="btn btn-outline btn-sm" style="padding:4px 10px;font-size:12px;background:#eef2ff;color:#4338ca;border:1px solid #c7d2fe;font-weight:600;">
+        🛡 豁免白名单(<span id="exemptCount">0</span>)
+      </button>
       <div class="flex items-center gap-2">
         <input type="date" id="mgrDateFrom" class="text-xs border border-gray-200 rounded-md px-2 py-1" onchange="renderManageBoard()">
         <span class="text-xs text-gray-400">~</span>
@@ -1586,7 +1596,7 @@
   <div class="inspiration-author" id="inspirationAuthor">—— 加油的打工人</div>
   <button onclick="openInspirationManager()" style="position:absolute;right:10px;top:10px;background:rgba(255,255,255,0.6);border:1px solid #cbd5e1;color:#64748b;border-radius:6px;padding:3px 8px;font-size:11px;cursor:pointer;" title="管理语录">⚙ 管理</button>
   <!-- V8.48：版本号挪到这里（右下小角标），主看板顶部不再占位 -->
-  <span style="position:absolute;left:14px;top:50%;transform:translateY(-50%);font-size:10px;color:#94a3b8;font-weight:500;letter-spacing:0.4px;font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;opacity:0.65;" title="当前版本 V9.13（2026-09-09）">v9.13</span>
+  <span style="position:absolute;left:14px;top:50%;transform:translateY(-50%);font-size:10px;color:#94a3b8;font-weight:500;letter-spacing:0.4px;font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;opacity:0.65;" title="当前版本 V9.14（2026-09-09）">v9.14</span>
 </div>
 
 <!-- Modal: Daily Row CRUD -->
@@ -3498,7 +3508,7 @@ function detectAnomaliesEx() {
       });
     }
 
-    // ========== A7+A8: 工时利用率异常（使用统一阈值 81.25%~130%）==========
+    // ========== A7+A8: 工时利用率异常（V9.14：低于 81.25 即异常，不分等级）==========
     if (utilRate > 0) {
       const uLv = getUtilAnomalyLevel(utilRate);
       if (uLv !== 'normal') {
@@ -3509,11 +3519,11 @@ function detectAnomaliesEx() {
           date: dateKey,
           category: 'utilization',
           type: isHigh ? 'high_utilization' : 'low_utilization',
-          level: uLv,
+          level: 'high',   // V9.14：不分等级，统一 high
           summary: isHigh ? '工时利用率偏高' : '工时利用率偏低',
           detail: {
             工时利用率: utilRate.toFixed(2) + '%',
-            正常范围: BAILING_RULES.UTIL_NORMAL_LOW + '% ~ ' + BAILING_RULES.UTIL_NORMAL_HIGH + '%',
+            阈值: BAILING_RULES.UTIL_NORMAL_LOW + '%（低于即异常）',
             偏离: deviation.toFixed(2) + '%',
             出勤时长: attendH.toFixed(2) + 'h',
             通航审核时长: tongH.toFixed(2) + 'h'
@@ -3586,18 +3596,20 @@ function detectAnomaliesEx() {
       });
     }
 
-    // ========== A13: 暂离时长偏多（来自 zanliMap：durMin > 阈值 或 cnt ≥ 3）==========
-    // V9.9：新增异常类型 —— 暂离数据由 非任务表 解析后写入 App.zanliMap（key=emp|date）
+    // ========== A13: 暂离时长偏多（来自 zanliMap）==========
+    // V9.14：单次不超 15min、日维度不超 1.5h（90min）；单次估算 = 总时长/次数
     {
       const zl = (App.zanliMap && (App.zanliMap.get(empKey+'_'+dateKey) || App.zanliMap.get(d.uin+'_'+dateKey))) || null;
       if (zl && (zl.durMin > 0 || zl.cnt > 0)) {
         const cfg = App.anomalyConfig || {};
-        const maxT = Number(cfg.zanliMaxTotalMin) || 60;       // 总时长上限
-        const maxS = Number(cfg.zanliMaxSingleMin) || 15;      // 单次时长上限
+        // V9.14：阈值统一改用 1.5h（90min）/ 单次 15min
+        const singleMax = Number(cfg.zanliMaxSingleMin) || BAILING_RULES.ZANLI_SINGLE_MAX_MIN || 15;
+        const totalMaxMin = Number(cfg.zanliMaxTotalMin) || (BAILING_RULES.ZANLI_TOTAL_MAX_HOUR || 1.5) * 60;
         const singleEst = zl.cnt > 0 ? zl.durMin / zl.cnt : zl.durMin;
-        if (zl.durMin > maxT || singleEst > maxS || zl.cnt >= 3) {
-          const lvl = (zl.durMin > maxT * 1.5 || singleEst > maxS * 2) ? 'high'
-                     : (zl.durMin > maxT || singleEst > maxS) ? 'medium' : 'low';
+        // 触发条件：单次 > 15min OR 日总额 > 90min
+        if (singleEst > singleMax || zl.durMin > totalMaxMin) {
+          // V9.14：分级只保留「总额超 1.5× 上限」= high；其他 = low
+          const lvl = (zl.durMin > totalMaxMin * 1.5 || singleEst > singleMax * 2) ? 'high' : 'low';
           anomalies.push({
             emp: empKey, date: dateKey,
             category: 'zanli', type: 'zanli_excessive', level: lvl,
@@ -3606,7 +3618,7 @@ function detectAnomaliesEx() {
               暂离总时长: zl.durMin + 'min',
               暂离次数: zl.cnt + '次',
               平均每次: singleEst.toFixed(1) + 'min',
-              阈值: '总时长>' + maxT + 'min 或 单次>' + maxS + 'min 或 次数≥3'
+              阈值: '单次>' + singleMax + 'min 或 日总额>' + totalMaxMin + 'min'
             },
             suggestion: '建议核实当日是否多次长时间离岗'
           });
@@ -3614,22 +3626,46 @@ function detectAnomaliesEx() {
       }
     }
 
-    // ========== A14: 审核时长过短（出勤≥6h 但 通航审核 h < 2h）==========
-    // V9.9：新增异常类型 —— 出勤满半天以上却几乎没有审核产出，可能是任务未提报
-    if (attendH >= 6 && tongH < 2) {
+    // ========== A14: 审核时长过短（按出勤时长分级阈值）==========
+    // V9.14：8h<6.25；4h<3.25；早班1（当天/明天）<5.68 → 异常
+    //  早班1 用 scheduleMap 查 code === '早班1'
+    let auditMin = 0;
+    if (attendH > 0) {
+      const isZaoBan1 = (function(){
+        const sc = App.scheduleMap && App.scheduleMap[empKey+'_'+dateKey];
+        if (sc && String(sc.code||'').trim() === '早班1') return true;
+        // 明天是不是早班1
+        const dt = new Date(dateKey + 'T00:00:00');
+        if (isNaN(dt.getTime())) return false;
+        dt.setDate(dt.getDate() + 1);
+        const nd = dt.getFullYear()+'-'+String(dt.getMonth()+1).padStart(2,'0')+'-'+String(dt.getDate()).padStart(2,'0');
+        const sc2 = App.scheduleMap && App.scheduleMap[empKey+'_'+nd];
+        return !!(sc2 && String(sc2.code||'').trim() === '早班1');
+      })();
+      if (isZaoBan1) {
+        auditMin = BAILING_RULES.AUDIT_MIN_ZAO_BAN1 || 5.68;
+      } else if (attendH >= 7.5) {
+        auditMin = BAILING_RULES.AUDIT_MIN_8H || 6.25;
+      } else if (attendH >= 3.5) {
+        auditMin = BAILING_RULES.AUDIT_MIN_4H || 3.25;
+      }
+    }
+    if (auditMin > 0 && tongH < auditMin) {
       anomalies.push({
         emp: empKey, date: dateKey,
-        category: 'audit', type: 'short_audit_time', level: tongH === 0 ? 'medium' : 'low',
+        category: 'audit', type: 'short_audit_time',
+        level: tongH === 0 ? 'high' : 'low',
         summary: tongH === 0 ? '当日无审核记录' : '审核时长偏短',
         detail: {
           出勤时长: attendH.toFixed(2) + 'h',
           通航审核: tongH.toFixed(2) + 'h',
+          阈值: auditMin.toFixed(2) + 'h',
           '计量/非通航': measureH.toFixed(2) + 'h',
           计时任务: offlineTimingH.toFixed(2) + 'h'
         },
         suggestion: tongH === 0
           ? '当日无任何审核产出，请确认是否漏提报'
-          : '出勤满半天但审核不足 2h，可能任务分配偏少或数据漏提报'
+          : '通航审核 < ' + auditMin.toFixed(2) + 'h（按出勤时长定阈值），可能任务分配偏少或数据漏提报'
       });
     }
 
@@ -3656,9 +3692,10 @@ function detectAnomaliesEx() {
     if (dayRange && !workloadExempt) {
       const diff = d.totalStd - dayRange.expected;
       const absDiff = Math.abs(diff);
-      const tol = dayRange.tol;
-      const level = absDiff > tol * BAILING_RULES.DAILY_LEVEL_HIGH ? 'high'
-                  : absDiff > tol * BAILING_RULES.DAILY_LEVEL_MEDIUM ? 'medium' : 'low';
+      // V9.14：等级用绝对差值（WORKLOAD_LEVEL_*_DELTA），不再是 tol × 倍数
+      const lvlHigh = BAILING_RULES.WORKLOAD_LEVEL_HIGH_DELTA;
+      const lvlMed = BAILING_RULES.WORKLOAD_LEVEL_MEDIUM_DELTA;
+      const level = absDiff > lvlHigh ? 'high' : absDiff > lvlMed ? 'medium' : 'low';
 
       if (d.totalStd > 5 && d.totalStd < dayRange.low) {
         anomalies.push({
@@ -3794,12 +3831,12 @@ function detectUtilAnomalies() {
           date: date,
           category: 'utilization',
           type: isHigh ? 'high_utilization' : 'low_utilization',
-          level: level,
+          level: 'high',   // V9.14：不分等级
           summary: isHigh ? '工时利用率偏高' : '工时利用率偏低',
           detail: {
             工时利用率: rate.toFixed(2) + '%',
             偏离: (isHigh ? '+' : '-') + deviation.toFixed(2) + '%',
-            正常范围: BAILING_RULES.UTIL_NORMAL_LOW + '% ~ ' + BAILING_RULES.UTIL_NORMAL_HIGH + '%',
+            阈值: BAILING_RULES.UTIL_NORMAL_LOW + '%（低于即异常）',
             出勤时长: (utilRow._attendH || 0).toFixed(2) + 'h',
             班表出勤: getScheduleAttendH(empName, date) + 'h',
             通航审核时长: (utilRow._tongH || 0).toFixed(2) + 'h',
@@ -3878,18 +3915,18 @@ function detectPeriodStdAnomalies(scopedData){
     if (d.date < g.dateFrom) g.dateFrom = d.date;
     if (d.date > g.dateTo)   g.dateTo   = d.date;
   }
-  // V8.74 周期允差（非对称）：低 -67.5，高 +125
-  const TOL_LOW  = BAILING_RULES.PERIOD_TOL_LOW;   // -67.5
-  const TOL_HIGH = BAILING_RULES.PERIOD_TOL_HIGH;  // +125
+  // V9.14：周期区间按全天口径的比例缩放（expected × WORKLOAD_NORMAL_LOW/1000 是下限，× WORKLOAD_NORMAL_HIGH/1000 是上限）
+  const periodLowDelta  = g.expected * (1 - BAILING_RULES.WORKLOAD_NORMAL_LOW  / 1000);
+  const periodHighDelta = g.expected * (BAILING_RULES.WORKLOAD_NORMAL_HIGH / 1000 - 1);
   for (const g of byEmp.values()){
     if (g.expected <= 0) continue;
     // V9.13：工作量白名单豁免（跳过周期标准条偏离）
     if (isWorkloadExempt(g.emp, '')) continue;
     const diff = g.total - g.expected;  // 正=偏高，负=偏低
-    // 偏低：diff < TOL_LOW（即 < -67.5）；偏高：diff > TOL_HIGH（即 > 125）
-    if (diff >= TOL_LOW && diff <= TOL_HIGH) continue; // 正常区间
+    if (diff > -periodLowDelta && diff < periodHighDelta) continue; // 正常区间
     const absDiff = Math.abs(diff);
-    const level = absDiff > Math.abs(TOL_LOW) * 3 ? 'high' : absDiff > Math.abs(TOL_LOW) * 1.5 ? 'medium' : 'low';
+    const level = absDiff > BAILING_RULES.WORKLOAD_LEVEL_HIGH_DELTA ? 'high'
+                : absDiff > BAILING_RULES.WORKLOAD_LEVEL_MEDIUM_DELTA ? 'medium' : 'low';
     anomalies.push({
       emp: g.emp,
       date: g.dateFrom + ' ~ ' + g.dateTo,
@@ -3903,9 +3940,9 @@ function detectPeriodStdAnomalies(scopedData){
         理论标准条: g.expected.toFixed(1),
         实际标准条: g.total.toFixed(1),
         偏差: diff.toFixed(1),
-        允差范围: `${TOL_LOW} ~ +${TOL_HIGH}`
+        允差范围: `${(g.expected-periodLowDelta).toFixed(0)} ~ ${(g.expected+periodHighDelta).toFixed(0)}`
       },
-      suggestion: `周期 ${g.dateFrom}~${g.dateTo}：理论 ${g.expected.toFixed(0)}，实际 ${g.total.toFixed(1)}，${diff < 0 ? '低' : '高'} ${absDiff.toFixed(1)}（允差 ${TOL_LOW}~+${TOL_HIGH}）`
+      suggestion: `周期 ${g.dateFrom}~${g.dateTo}：理论 ${g.expected.toFixed(0)}，实际 ${g.total.toFixed(1)}，${diff < 0 ? '低' : '高'} ${absDiff.toFixed(1)}（允差区间 ±${periodLowDelta.toFixed(0)}~+${periodHighDelta.toFixed(0)}）`
     });
   }
   return anomalies;
@@ -4022,49 +4059,59 @@ function detectAnomalies(data) {
 // ============================================================
 
 // V8.74 理论产出与允差（业务规则）
-//   1h = 125 标准条（业务基准）
-//   全天(8h) = 1000 条；半天(4h) = 500 条
-//   单日允差：±5 分钟 = ±10.42 条
-//     严重: > 5倍(±52.08)  一般: > 2.5倍(±26.04)  轻微: 0~2.5倍
-//   周期允差：-67.5 ~ +125
+// V9.14：统一口径 —— 全天标准条区间 [WORKLOAD_NORMAL_LOW, WORKLOAD_NORMAL_HIGH] = [900, 1250]
+//        不再用 1000±tol 的固定模式；改成下限/上限两个常量直接控制，跨日早班1 豁免保留
 const BAILING_RULES = {
   STD_PER_HOUR: 125,
   FULL_DAY_HOURS: 8,
   HALF_DAY_HOURS: 4,
-  DAILY_TOLERANCE_MIN: 5,                // ±5 分钟
-  DAILY_TOLERANCE_STD: 5/60*125,         // ≈ 10.4167
-  DAILY_LEVEL_HIGH: 5,                   // 严重：超出 tolerance × 5
-  DAILY_LEVEL_MEDIUM: 2.5,              // 一般：超出 tolerance × 2.5
-  // 周期允差（非对称）
-  PERIOD_TOL_LOW: -67.5,                 // 周期低于理论 67.5 条为异常
-  PERIOD_TOL_HIGH: 125,                  // 周期高于理论 125 条为异常
+  DAILY_TOLERANCE_MIN: 5,                // ±5 分钟（仅作参考，未直接用）
+  DAILY_TOLERANCE_STD: 5/60*125,         // ≈ 10.4167（同上）
+  // V9.14：工作日等级倍数（DAILY_LEVEL_HIGH × 半档 = 5 × 50 = 250；MEDIUM × 50 = 125）——
+  //        现在以 [WORKLOAD_NORMAL_LOW, WORKLOAD_NORMAL_HIGH] 为基准，偏离 low/high 后再分档
+  DAILY_LEVEL_HIGH: 5,
+  DAILY_LEVEL_MEDIUM: 2.5,
+  // 周期允差（非对称，V9.14 保留旧值）
+  PERIOD_TOL_LOW: -67.5,
+  PERIOD_TOL_HIGH: 125,
+  // V9.14：工作日正常区间（标准条）
+  WORKLOAD_NORMAL_LOW: 900,              // 低于此算偏低
+  WORKLOAD_NORMAL_HIGH: 1250,            // 高于此算偏高
+  WORKLOAD_LEVEL_HIGH_DELTA: 200,        // 偏离区间超过 200 条 → 严重
+  WORKLOAD_LEVEL_MEDIUM_DELTA: 100,      // 偏离区间超过 100 条 → 一般
   UTIL_HOUR_CAP: 11,                     // 通航+计时+计量+非通航折算 > 11h 视为异常
   // V9.13：跨日早班1 豁免（早班1 = 07:00-16:00，06:00-07:00 的 1h=125 条 会被记到前一天）
   CROSS_DAY_ZAO_BAN1_TOL: 135,            // 单日标准条允差从 ±10.42 扩到 ±135（125+10.42），覆盖跨日 125 + 日常 10.42
-  // V8.95 统一利用率异常阈值
-  UTIL_NORMAL_LOW: 81.25,               // 正常下限
-  UTIL_NORMAL_HIGH: 130,                // 正常上限
-  UTIL_LEVEL_MINOR: 2.5,               // 轻微：超出正常范围 ≤2.5%
-  UTIL_LEVEL_MEDIUM: 5,                // 一般：超出 2.5%~5%
+  // V9.14：暂离阈值
+  ZANLI_SINGLE_MAX_MIN: 15,              // 单次不超过 15min（估算 = 总时长/次数）
+  ZANLI_TOTAL_MAX_HOUR: 1.5,             // 日维度总额不超过 1.5h = 90min
+  // V9.14：审核时长阈值（按出勤时长分级）
+  AUDIT_MIN_8H: 6.25,                    // 出勤 8h 时通航最少 6.25h
+  AUDIT_MIN_4H: 3.25,                    // 出勤 4h 时通航最少 3.25h
+  AUDIT_MIN_ZAO_BAN1: 5.68,              // 早班1（当天/明天）时通航最少 5.68h
+  // V9.14：利用率口径 —— 低于 81.25 算异常（不分等级）
+  UTIL_NORMAL_LOW: 81.25,               // 正常下限；低于即异常
+  UTIL_NORMAL_HIGH: 130,                // 正常上限（保留 >130 也异常，作为双侧检测）
+  UTIL_USE_TWO_SIDE: true,              // 是否双侧检测；false 时只检 <LOW
+  UTIL_LEVEL_MINOR: 2.5,
+  UTIL_LEVEL_MEDIUM: 5,
   // >5% 为严重
 };
 
 /**
- * V8.95 统一利用率异常等级判定
- * @returns {string} 'normal'|'low'|'medium'|'high'
+ * V9.14 统一利用率异常等级判定
+ *   新口径：< UTIL_NORMAL_LOW 算异常，不分等级（一律 high）
+ *   如启用 UTIL_USE_TWO_SIDE，> UTIL_NORMAL_HIGH 也算异常
+ * @returns {string} 'normal'|'high'
  */
 function getUtilAnomalyLevel(rate) {
   if (rate <= 0) return 'normal'; // 无数据
   const lo = BAILING_RULES.UTIL_NORMAL_LOW;
   const hi = BAILING_RULES.UTIL_NORMAL_HIGH;
-  if (rate >= lo && rate <= hi) return 'normal';
-  // 计算偏离
-  let deviation = 0;
-  if (rate < lo) deviation = lo - rate;
-  else deviation = rate - hi;
-  if (deviation <= BAILING_RULES.UTIL_LEVEL_MINOR) return 'low';     // 轻微
-  if (deviation <= BAILING_RULES.UTIL_LEVEL_MEDIUM) return 'medium'; // 一般
-  return 'high';                                                       // 严重
+  const twoSide = BAILING_RULES.UTIL_USE_TWO_SIDE !== false;
+  if (rate < lo) return 'high';                         // 低于下限 → 异常（统一 high）
+  if (twoSide && rate > hi) return 'high';              // 启用双侧 + 高于上限 → 异常
+  return 'normal';
 }
 
 /** V8.95 判断利用率是否异常（非normal即异常） */
@@ -4134,13 +4181,24 @@ function isCrossDayZaoBan1(emp, date) {
  */
 function getDailyStdRange(att, emp, date){
   const expected = getExpectedStdByAtt(att);
-  let tol = BAILING_RULES.DAILY_TOLERANCE_STD;
-  if (expected > 0 && emp && date && isCrossDayZaoBan1(emp, date)) {
-    tol = Math.max(tol, BAILING_RULES.CROSS_DAY_ZAO_BAN1_TOL || 135);
+  if (expected <= 0) return null;
+  // V9.14：全天区间 [WORKLOAD_NORMAL_LOW, WORKLOAD_NORMAL_HIGH] = [900, 1250]，
+  //        半天 / OT 等按 expected/1000 比例缩放（半天 500 → [450, 625]）
+  const ratio = expected / 1000;
+  let lo = BAILING_RULES.WORKLOAD_NORMAL_LOW  * ratio;
+  let hi = BAILING_RULES.WORKLOAD_NORMAL_HIGH * ratio;
+  if (emp && date && isCrossDayZaoBan1(emp, date)) {
+    // V9.14：跨日早班1 额外把区间双向扩 CROSS_DAY_ZAO_BAN1_TOL（默认 135 = 125±10 跨日偏移）
+    //        让 875/125 这种 ±125 的跨日偏差不再误报
+    const extra = BAILING_RULES.CROSS_DAY_ZAO_BAN1_TOL || 135;
+    lo -= extra;
+    hi += extra;
   }
-  if (expected > 0) return { low: expected - tol, high: expected + tol, expected, tol, _crossDayExempt: tol > BAILING_RULES.DAILY_TOLERANCE_STD };
-  // 没有班次信息：返回 null 表示不做区间判断
-  return null;
+  return {
+    low: lo, high: hi, expected,
+    tol: (hi - lo) / 2,
+    _crossDayExempt: !!(emp && date && isCrossDayZaoBan1(emp, date))
+  };
 }
 
 function getThresholds(){
@@ -10659,7 +10717,12 @@ function renderScheduleMatrix(){
         }
         // 悬停提示：完整班次名 + 时间（若有）+ 点击修改
         var hoverTitle = disp.label + (disp.time ? ' '+disp.time : '') + '（点击修改）';
-        td.innerHTML='<span class="cell-shift shift-tag '+disp.cls+today+'" '+(noDataFlag||('title="'+escAttr(hoverTitle)+'"'))+' onclick="openEditShiftModal(\''+escAttr(key)+'\')" style="cursor:pointer;'+(disp.style||'')+(noDataFlag?'outline:2px solid #ef4444;outline-offset:-1px;border-radius:4px;':'')+'">'+escHtml(disp.tag)+(noDataFlag?'<span style="position:absolute;top:-2px;right:-2px;width:6px;height:6px;background:#ef4444;border-radius:50%;"></span>':'')+'</span>';
+        // V9.14：早班1 班次加角标「早」（06:00-07:00 跨日 1h 会记到前一天）
+        var isZaoBan1 = String(sc.code || '').trim() === '早班1';
+        var zaoBanBadge = isZaoBan1
+          ? '<span style="position:absolute;top:-4px;right:-4px;font-size:7px;font-weight:700;color:#fff;background:linear-gradient(135deg,#f59e0b,#ea580c);min-width:11px;height:11px;padding:0 2px;border-radius:6px;display:inline-flex;align-items:center;justify-content:center;box-shadow:0 1px 2px rgba(0,0,0,.25);" title="早班1：07:00-16:00，06:00-07:00 的 1h 会被记到前一天">早</span>'
+          : '';
+        td.innerHTML='<span class="cell-shift shift-tag '+disp.cls+today+'" '+(noDataFlag||('title="'+escAttr(hoverTitle)+'"'))+' onclick="openEditShiftModal(\''+escAttr(key)+'\')" style="cursor:pointer;position:relative;'+(disp.style||'')+(noDataFlag?'outline:2px solid #ef4444;outline-offset:-1px;border-radius:4px;':'')+'">'+escHtml(disp.tag)+zaoBanBadge+(noDataFlag?'<span style="position:absolute;top:-2px;right:-2px;width:6px;height:6px;background:#ef4444;border-radius:50%;"></span>':'')+'</span>';
       }else{
         // 空单元格也可以点击添加
         td.innerHTML='<span class="cell-empty" onclick="openAddShiftForCell(\''+escAttr(emp)+'\',\''+escAttr(date)+'\')" title="点击添加班次">+</span>';
@@ -12675,16 +12738,137 @@ function loadAnomalyConfig(){
   if($('#cfgZanliSingle')) $('#cfgZanliSingle').value=App.anomalyConfig.zanliMaxSingleMin;
   if($('#cfgUtilGap')) $('#cfgUtilGap').value=App.anomalyConfig.utilGapMinHour;
 }
+// V9.14：阈值配置（持久化 + 应用所有异常规则后立即刷新）
 function applyAnomalyConfig(){
+  // 1) AnomalyConfig（暂离/审核时长过短等）
   var t=parseFloat($('#cfgZanliTotal')?.value);
   var s=parseFloat($('#cfgZanliSingle')?.value);
   var g=parseFloat($('#cfgUtilGap')?.value);
   if(!isNaN(t)&&t>=0) App.anomalyConfig.zanliMaxTotalMin=t;
   if(!isNaN(s)&&s>=0) App.anomalyConfig.zanliMaxSingleMin=s;
   if(!isNaN(g)&&g>=0) App.anomalyConfig.utilGapMinHour=g;
-  try{ localStorage.setItem('bailing_anomaly_config', JSON.stringify(App.anomalyConfig)); }catch(e){}
-  _fsShowSyncHint('异常阈值已更新', 2000);
+  // 2) BAILING_RULES（工作量区间 / 利用率阈值 / 暂离 / 审核时长 / 跨日早班1 允差 / 等级阈值）
+  function num(id){
+    var n=parseFloat(document.getElementById(id)?.value);
+    return isNaN(n) ? null : n;
+  }
+  var workLow = num('cfgWorkLow');
+  var workHigh = num('cfgWorkHigh');
+  var workLvlHigh = num('cfgWorkLvlHigh');
+  var workLvlMed = num('cfgWorkLvlMed');
+  var utilLow = num('cfgUtilLow');
+  var utilHigh = num('cfgUtilHigh');
+  var zanliTotal = num('cfgZanliTotalMin');
+  var zanliSingle = num('cfgZanliSingleMin');
+  var audit8 = num('cfgAudit8');
+  var audit4 = num('cfgAudit4');
+  var auditZb1 = num('cfgAuditZb1');
+  var crossDay = num('cfgCrossDay');
+
+  if(workLow!==null)    BAILING_RULES.WORKLOAD_NORMAL_LOW       = workLow;
+  if(workHigh!==null)   BAILING_RULES.WORKLOAD_NORMAL_HIGH      = workHigh;
+  if(workLvlHigh!==null)BAILING_RULES.WORKLOAD_LEVEL_HIGH_DELTA  = workLvlHigh;
+  if(workLvlMed!==null) BAILING_RULES.WORKLOAD_LEVEL_MEDIUM_DELTA = workLvlMed;
+  if(utilLow!==null)    BAILING_RULES.UTIL_NORMAL_LOW          = utilLow;
+  if(utilHigh!==null)   BAILING_RULES.UTIL_NORMAL_HIGH         = utilHigh;
+  if(zanliTotal!==null) BAILING_RULES.ZANLI_TOTAL_MAX_HOUR    = zanliTotal/60;
+  if(zanliSingle!==null)BAILING_RULES.ZANLI_SINGLE_MAX_MIN    = zanliSingle;
+  if(audit8!==null)     BAILING_RULES.AUDIT_MIN_8H            = audit8;
+  if(audit4!==null)     BAILING_RULES.AUDIT_MIN_4H            = audit4;
+  if(auditZb1!==null)   BAILING_RULES.AUDIT_MIN_ZAO_BAN1      = auditZb1;
+  if(crossDay!==null)   BAILING_RULES.CROSS_DAY_ZAO_BAN1_TOL  = crossDay;
+
+  // 3) 持久化
+  try{
+    localStorage.setItem('bailing_anomaly_config', JSON.stringify(App.anomalyConfig));
+    localStorage.setItem('bailing_bailing_rules_overrides', JSON.stringify({
+      WORKLOAD_NORMAL_LOW:BAILING_RULES.WORKLOAD_NORMAL_LOW,
+      WORKLOAD_NORMAL_HIGH:BAILING_RULES.WORKLOAD_NORMAL_HIGH,
+      WORKLOAD_LEVEL_HIGH_DELTA:BAILING_RULES.WORKLOAD_LEVEL_HIGH_DELTA,
+      WORKLOAD_LEVEL_MEDIUM_DELTA:BAILING_RULES.WORKLOAD_LEVEL_MEDIUM_DELTA,
+      UTIL_NORMAL_LOW:BAILING_RULES.UTIL_NORMAL_LOW,
+      UTIL_NORMAL_HIGH:BAILING_RULES.UTIL_NORMAL_HIGH,
+      ZANLI_TOTAL_MAX_HOUR:BAILING_RULES.ZANLI_TOTAL_MAX_HOUR,
+      ZANLI_SINGLE_MAX_MIN:BAILING_RULES.ZANLI_SINGLE_MAX_MIN,
+      AUDIT_MIN_8H:BAILING_RULES.AUDIT_MIN_8H,
+      AUDIT_MIN_4H:BAILING_RULES.AUDIT_MIN_4H,
+      AUDIT_MIN_ZAO_BAN1:BAILING_RULES.AUDIT_MIN_ZAO_BAN1,
+      CROSS_DAY_ZAO_BAN1_TOL:BAILING_RULES.CROSS_DAY_ZAO_BAN1_TOL
+    }));
+  }catch(e){}
+  _fsShowSyncHint('阈值已更新（已重算异常）', 2000);
+  // 4) 重算 + 刷新所有视图
+  if(typeof calcAll==='function') calcAll();
+  if(typeof checkAlerts==='function') checkAlerts();
+  if(typeof renderTable==='function') renderTable();
   if(typeof renderManageBoard==='function') renderManageBoard();
+  if(typeof renderFilteredAlerts==='function') renderFilteredAlerts();
+  if(typeof renderAlertOverview==='function') renderAlertOverview();
+}
+
+// V9.14：从 localStorage 恢复 BAILING_RULES 用户覆盖
+function loadBAilingRulesOverrides(){
+  try{
+    var raw = localStorage.getItem('bailing_bailing_rules_overrides');
+    if(!raw) return;
+    var d = JSON.parse(raw);
+    Object.keys(d).forEach(function(k){
+      if(typeof BAILING_RULES[k] !== 'undefined' && typeof d[k] === 'number'){
+        BAILING_RULES[k] = d[k];
+      }
+    });
+  }catch(e){}
+}
+
+// V9.14：阈值配置独立看板（modal）
+function openThresholdConfig(){
+  var existing = document.getElementById('thresholdConfigModal');
+  if(existing) existing.parentNode.removeChild(existing);
+  var v = function(key){ return BAILING_RULES[key]; };
+  var html = `
+    <div id="thresholdConfigModal" style="position:fixed;inset:0;background:rgba(15,23,42,.45);z-index:9999;display:flex;align-items:center;justify-content:center;z-index:9999;">
+      <div style="background:#fff;border-radius:12px;width:560px;max-width:92vw;max-height:90vh;overflow-y:auto;padding:22px 24px;box-shadow:0 8px 32px rgba(15,23,42,.18);">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;">
+          <h3 style="font-size:15px;font-weight:700;color:#1e293b;margin:0;">⚙ 异常阈值配置（独立看板）</h3>
+          <button onclick="document.getElementById('thresholdConfigModal').remove()" style="background:transparent;border:0;color:#64748b;font-size:18px;cursor:pointer;">×</button>
+        </div>
+        <div style="font-size:11px;color:#94a3b8;margin-bottom:14px;line-height:1.5;">
+          所有异常规则都走这里改，改完点「应用」会立即重算异常并刷新主看板 / 异常筛选 / 管理看板。
+        </div>
+        <style>
+          #thresholdConfigModal .row{display:flex;align-items:center;gap:8px;margin-bottom:8px;}
+          #thresholdConfigModal .row label{flex:1;font-size:12px;color:#475569;}
+          #thresholdConfigModal .row input{flex:0 0 90px;border:1px solid #e2e8f0;border-radius:6px;padding:4px 8px;font-size:12px;text-align:center;}
+          #thresholdConfigModal .section-title{font-size:12px;font-weight:600;color:#4338ca;margin:14px 0 8px;border-bottom:1px solid #e0e7ff;padding-bottom:4px;}
+          #thresholdConfigModal .hint{font-size:10px;color:#94a3b8;}
+        </style>
+        <div class="section-title">📦 工作量异常（单日 / 周期 标准条偏离）</div>
+        <div class="row"><label>正常区间下限</label><input type="number" id="cfgWorkLow" value="${v('WORKLOAD_NORMAL_LOW')}" step="10"></div>
+        <div class="row"><label>正常区间上限</label><input type="number" id="cfgWorkHigh" value="${v('WORKLOAD_NORMAL_HIGH')}" step="10"></div>
+        <div class="row"><label>严重等级阈值（偏离 > 此 → high）</label><input type="number" id="cfgWorkLvlHigh" value="${v('WORKLOAD_LEVEL_HIGH_DELTA')}" step="10"></div>
+        <div class="row"><label>一般等级阈值（偏离 > 此 → medium）</label><input type="number" id="cfgWorkLvlMed" value="${v('WORKLOAD_LEVEL_MEDIUM_DELTA')}" step="10"></div>
+        <div class="row"><label>跨日早班1 允差（默认 135）</label><input type="number" id="cfgCrossDay" value="${v('CROSS_DAY_ZAO_BAN1_TOL')}" step="5"><span class="hint">早班1=07:00-16:00,06:00-07:00 1h(125条) 会被记到前一天</span></div>
+
+        <div class="section-title">📊 工时利用率异常（不分等级）</div>
+        <div class="row"><label>低于此值算异常</label><input type="number" id="cfgUtilLow" value="${v('UTIL_NORMAL_LOW')}" step="0.25"><span class="hint">默认 81.25%</span></div>
+        <div class="row"><label>高于此值也异常（双侧）</label><input type="number" id="cfgUtilHigh" value="${v('UTIL_NORMAL_HIGH')}" step="1"><span class="hint">默认 130%；改成 9999 即只检下方</span></div>
+
+        <div class="section-title">⏰ 暂离异常</div>
+        <div class="row"><label>单次不超过（分钟）</label><input type="number" id="cfgZanliSingleMin" value="${v('ZANLI_SINGLE_MAX_MIN')}" step="1"></div>
+        <div class="row"><label>日总额不超过（分钟）</label><input type="number" id="cfgZanliTotalMin" value="${Math.round(v('ZANLI_TOTAL_MAX_HOUR')*60)}" step="5"></div>
+
+        <div class="section-title">📋 审核时长过短（按出勤分级）</div>
+        <div class="row"><label>8h 出勤最少审核 h</label><input type="number" id="cfgAudit8" value="${v('AUDIT_MIN_8H')}" step="0.05"></div>
+        <div class="row"><label>4h 出勤最少审核 h</label><input type="number" id="cfgAudit4" value="${v('AUDIT_MIN_4H')}" step="0.05"></div>
+        <div class="row"><label>早班1 最少审核 h</label><input type="number" id="cfgAuditZb1" value="${v('AUDIT_MIN_ZAO_BAN1')}" step="0.05"></div>
+
+        <div style="display:flex;justify-content:flex-end;gap:8px;margin-top:18px;">
+          <button onclick="document.getElementById('thresholdConfigModal').remove()" style="padding:6px 14px;font-size:12px;background:#fff;color:#64748b;border:1px solid #e2e8f0;border-radius:6px;cursor:pointer;">取消</button>
+          <button onclick="applyAnomalyConfig();document.getElementById('thresholdConfigModal').remove();" style="padding:6px 14px;font-size:12px;background:#92400e;color:#fff;border:0;border-radius:6px;cursor:pointer;font-weight:600;">应用并刷新</button>
+        </div>
+      </div>
+    </div>`;
+  document.body.insertAdjacentHTML('beforeend', html);
 }
 
 // V9.13：工作量白名单豁免（持久化 + 应用）
@@ -14598,6 +14782,7 @@ function loadFromLocalStorage(){
   }catch(e){}
   loadScheduleStorage();
   loadWorkloadExempt();
+  loadBAilingRulesOverrides();
 }
 function saveScheduleStorage(){ if(typeof BailingPersistence!=='undefined'){BailingPersistence.saveSchedule();return;} try{localStorage.setItem('bailing_schedule',JSON.stringify({map:App.scheduleMap,matrix:App.scheduleMatrix}));}catch(e){} }
 function loadScheduleStorage(){ if(typeof BailingPersistence!=='undefined'){BailingPersistence.loadSchedule();return;} try{const raw=localStorage.getItem('bailing_schedule');if(raw){const d=JSON.parse(raw);if(d.map)App.scheduleMap=d.map;if(d.matrix)App.scheduleMatrix=d.matrix;}}catch(e){} }
