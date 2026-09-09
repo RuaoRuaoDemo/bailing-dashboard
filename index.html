@@ -1,9 +1,9 @@
-<!-- Bailing Dashboard V9.12 - 20260909 - 上传模式+下载离线版 -->
+<!-- Bailing Dashboard V9.13 - 20260909 - 上传模式+下载离线版 -->
 <!--
   ===== 近期版本变更 =====
   V9.5.2 (2026-08-31) 修复「非任务工时统计」被误判成异常表导致 DIY 非任务无数据；
                       修复「班次内/班次外」异常盘点表被误判成排班表；
-                      修正 utilRows 中/英文名不对称导致丢人；新增出勤无产量/无数据补行注入
+                      修正 utilRows 中/英文名不对称导致丢人；新增出勤无无产出/无数据补行注入
   V9.6   (2026-08-31) 暂离 + 工时利用率分级配色并显示单位、异常加 ⚠；
                       DIY 编辑器支持改公式 / 改单位 / 多表多列多选 / 实时预览；
                       DIY 与主看板项目分组联动（项目 tabs，跳转只带当前项目）
@@ -30,6 +30,13 @@
                       全部改为 workload —— 这几类异常讲的是「计时/非任务/工作量/周期」结构问题，
                       跟工时利用率没关系，summary 都是「非任务时长偏高」「全天班工作量偏低」之类。
                       现在只剩 A7/A8 两条真正的「工时利用率」异常在 utilization 类别下
+  V9.13  (2026-09-09) 跨日早班1 豁免：早班1=07:00-16:00，06:00-07:00 的 1h（125 条）会被记到前一天
+                      → 当天是早班1 少 125（±135 豁免），当天是早班1 的前一天多 125（±135 豁免）
+                      → 之前 daily_below 把这种 875 条 / 125 条误报成"严重"，现在不报了；
+                      新增工作量白名单豁免：管理看板「🛡 豁免白名单」按钮 → textarea 编辑中文姓名
+                      → 这些人跳过 A3 timing_spike / A4 nontask_spike / A12 attend_no_data /
+                        daily_below/over / period_below/over 共 6 类工作量异常
+                      → 不影响 A7/A8（工时利用率）、A11（考勤）等真正的人员异常
 -->
 <!DOCTYPE html>
 <html lang="zh-CN">
@@ -40,7 +47,7 @@
 <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
 <meta http-equiv="Pragma" content="no-cache">
 <meta http-equiv="Expires" content="0">
-<title>百灵工作量仪表盘 V9.12</title>
+<title>百灵工作量仪表盘 V9.13</title>
 <link rel="stylesheet" href="vendor/tailwind.min.css">
 <script src="vendor/chart.umd.min.js"></script>
 <script src="vendor/xlsx.full.min.js"></script>
@@ -1141,6 +1148,7 @@
         <label class="text-xs text-gray-500">单次&gt;<input type="number" id="cfgZanliSingle" class="w-12 border border-gray-200 rounded px-1 py-0.5 text-center" style="font-size:11px;">min</label>
         <label class="text-xs text-gray-500">利用率缺口&gt;<input type="number" id="cfgUtilGap" class="w-12 border border-gray-200 rounded px-1 py-0.5 text-center" style="font-size:11px;">h</label>
         <button onclick="applyAnomalyConfig()" class="btn btn-outline btn-sm" style="padding:3px 8px;font-size:11px;">应用</button>
+        <button onclick="openWorkloadExemptEditor()" class="btn btn-outline btn-sm" style="padding:3px 8px;font-size:11px;background:#eef2ff;color:#4338ca;border-color:#c7d2fe;">🛡 豁免白名单(<span id="exemptCount">0</span>)</button>
       </div>
       <div class="flex items-center gap-2">
         <input type="date" id="mgrDateFrom" class="text-xs border border-gray-200 rounded-md px-2 py-1" onchange="renderManageBoard()">
@@ -1578,7 +1586,7 @@
   <div class="inspiration-author" id="inspirationAuthor">—— 加油的打工人</div>
   <button onclick="openInspirationManager()" style="position:absolute;right:10px;top:10px;background:rgba(255,255,255,0.6);border:1px solid #cbd5e1;color:#64748b;border-radius:6px;padding:3px 8px;font-size:11px;cursor:pointer;" title="管理语录">⚙ 管理</button>
   <!-- V8.48：版本号挪到这里（右下小角标），主看板顶部不再占位 -->
-  <span style="position:absolute;left:14px;top:50%;transform:translateY(-50%);font-size:10px;color:#94a3b8;font-weight:500;letter-spacing:0.4px;font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;opacity:0.65;" title="当前版本 V9.12（2026-09-09）">v9.12</span>
+  <span style="position:absolute;left:14px;top:50%;transform:translateY(-50%);font-size:10px;color:#94a3b8;font-weight:500;letter-spacing:0.4px;font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;opacity:0.65;" title="当前版本 V9.13（2026-09-09）">v9.13</span>
 </div>
 
 <!-- Modal: Daily Row CRUD -->
@@ -1666,6 +1674,7 @@ const __defaultApp = {
   trendChart: null,
   boardInited: false,
   utilRateOverrides: {}, // 工时利用率人工修正值 key->rate
+  workloadExemptSet: new Set(), // V9.13：工作量异常豁免名单（中文姓名集合）—— 跳过 daily_below/over、timing_spike、nontask_spike、attend_no_data、period_below/over
   utilTrendChart: null,
   taskTrendChart: null,
   workloadPieChart: null,
@@ -3426,9 +3435,9 @@ function detectAnomaliesEx() {
 
     // ========== A3: 计时任务激增 ==========
     // V8.95：只有当标准条也偏离正常范围时才报（纯计时人员全天计时是正常的）
-    const dayRange3 = getDailyStdRange(att);
+    const dayRange3 = getDailyStdRange(att, d.emp, d.date);
     const stdInRange = dayRange3 ? (d.totalStd >= dayRange3.low && d.totalStd <= dayRange3.high) : true;
-    if (attendH > 0 && offlineTimingH > attendH * 0.8 && !stdInRange) {
+    if (attendH > 0 && offlineTimingH > attendH * 0.8 && !stdInRange && !isWorkloadExempt(empKey, d.uin)) {
       const timingRatio = offlineTimingH / attendH;
       const timingLevel = timingRatio > 1.2 ? 'high' : timingRatio > 1.0 ? 'medium' : 'low';
       anomalies.push({
@@ -3448,7 +3457,7 @@ function detectAnomaliesEx() {
     }
 
     // ========== A4: 非任务激增（非任务 > 出勤×50%）==========
-    if (attendH > 0 && nontaskH > attendH * 0.5) {
+    if (attendH > 0 && nontaskH > attendH * 0.5 && !isWorkloadExempt(empKey, d.uin)) {
       const ntRatio = nontaskH / attendH;
       const ntLevel = ntRatio > 0.8 ? 'high' : ntRatio > 0.6 ? 'medium' : 'low';
       anomalies.push({
@@ -3640,10 +3649,11 @@ function detectAnomaliesEx() {
       });
     }
 
-    // ========== V8.74 单日标准条异常（按班次动态区间，允差 ±10.42 条）==========
-    // 等级：严重(>5×tol=52.08)  一般(>2.5×tol=26.04)  轻微(0~2.5×tol)
-    const dayRange = getDailyStdRange(att);
-    if (dayRange) {
+    // ========== V8.74 单日标准条异常（按班次动态区间，允差 ±10.42 条；V9.13 跨日早班1 扩到 ±135）==========
+    // 等级：严重(>5×tol)  一般(>2.5×tol)  轻微(0~2.5×tol)
+    const dayRange = getDailyStdRange(att, empKey, dateKey);
+    const workloadExempt = isWorkloadExempt(empKey, d.uin);
+    if (dayRange && !workloadExempt) {
       const diff = d.totalStd - dayRange.expected;
       const absDiff = Math.abs(diff);
       const tol = dayRange.tol;
@@ -3731,6 +3741,8 @@ function detectAnomaliesEx() {
         if(!cn2 || !App.filteredData.some(d=>d.emp===cn2)) continue;
       }
     }
+    // V9.13：工作量白名单豁免
+    if(isWorkloadExempt(emp, '')) continue;
     anomalies.push({
       emp: emp, date: date,
       category: 'workload', type: 'attend_no_data',
@@ -3871,6 +3883,8 @@ function detectPeriodStdAnomalies(scopedData){
   const TOL_HIGH = BAILING_RULES.PERIOD_TOL_HIGH;  // +125
   for (const g of byEmp.values()){
     if (g.expected <= 0) continue;
+    // V9.13：工作量白名单豁免（跳过周期标准条偏离）
+    if (isWorkloadExempt(g.emp, '')) continue;
     const diff = g.total - g.expected;  // 正=偏高，负=偏低
     // 偏低：diff < TOL_LOW（即 < -67.5）；偏高：diff > TOL_HIGH（即 > 125）
     if (diff >= TOL_LOW && diff <= TOL_HIGH) continue; // 正常区间
@@ -4025,6 +4039,8 @@ const BAILING_RULES = {
   PERIOD_TOL_LOW: -67.5,                 // 周期低于理论 67.5 条为异常
   PERIOD_TOL_HIGH: 125,                  // 周期高于理论 125 条为异常
   UTIL_HOUR_CAP: 11,                     // 通航+计时+计量+非通航折算 > 11h 视为异常
+  // V9.13：跨日早班1 豁免（早班1 = 07:00-16:00，06:00-07:00 的 1h=125 条 会被记到前一天）
+  CROSS_DAY_ZAO_BAN1_TOL: 135,            // 单日标准条允差从 ±10.42 扩到 ±135（125+10.42），覆盖跨日 125 + 日常 10.42
   // V8.95 统一利用率异常阈值
   UTIL_NORMAL_LOW: 81.25,               // 正常下限
   UTIL_NORMAL_HIGH: 130,                // 正常上限
@@ -4088,11 +4104,41 @@ function getExpectedStdByAtt(att){
     default:        return 0;
   }
 }
-/** 单日标准条正常区间 [expected - ±, expected + ±]；无 expected 时退回静态阈值 */
-function getDailyStdRange(att){
+
+/**
+ * V9.13：跨日早班1 判定
+ *   早班1 = 07:00-16:00，但实际打卡从 06:00 开始，06:00-07:00 的 1h（125 条）会被记到前一天
+ *   所以「当天」是早班1 时：当天少 125；「当天」的明天是早班1 时：当天多 125
+ *   两者都是正常现象，不应该报 daily_below / daily_over
+ *   返回 true 表示「跨日衔接」 → getDailyStdRange 把允差从 ±10.42 扩到 ±CROSS_DAY_ZAO_BAN1_TOL（默认 135）
+ */
+function isCrossDayZaoBan1(emp, date) {
+  if (!emp || !date || !App.scheduleMap) return false;
+  const d = new Date(date + 'T00:00:00');
+  if (isNaN(d.getTime())) return false;
+  // 当天是不是早班1（早班1 那天少 125）
+  const todaySc = App.scheduleMap[emp + '_' + date] ||
+                  (App.enToCnMap && App.scheduleMap[(App.enToCnMap.get(emp) || '') + '_' + date]);
+  if (todaySc && String(todaySc.code || '').trim() === '早班1') return true;
+  // 明天是不是早班1（明天是早班1 的话，今天多 125 → 早班1 的前一天）
+  const next = new Date(d); next.setDate(next.getDate() + 1);
+  const nextStr = next.getFullYear() + '-' + String(next.getMonth()+1).padStart(2,'0') + '-' + String(next.getDate()).padStart(2,'0');
+  const nextSc = App.scheduleMap[emp + '_' + nextStr] ||
+                 (App.enToCnMap && App.scheduleMap[(App.enToCnMap.get(emp) || '') + '_' + nextStr]);
+  if (nextSc && String(nextSc.code || '').trim() === '早班1') return true;
+  return false;
+}
+
+/** 单日标准条正常区间 [expected - ±, expected + ±]；无 expected 时退回静态阈值
+ *  V9.13：跨日早班1 时允差从 ±10.42 扩到 ±CROSS_DAY_ZAO_BAN1_TOL（默认 135 = 125 + 10.42）
+ */
+function getDailyStdRange(att, emp, date){
   const expected = getExpectedStdByAtt(att);
-  const tol = BAILING_RULES.DAILY_TOLERANCE_STD;
-  if (expected > 0) return { low: expected - tol, high: expected + tol, expected, tol };
+  let tol = BAILING_RULES.DAILY_TOLERANCE_STD;
+  if (expected > 0 && emp && date && isCrossDayZaoBan1(emp, date)) {
+    tol = Math.max(tol, BAILING_RULES.CROSS_DAY_ZAO_BAN1_TOL || 135);
+  }
+  if (expected > 0) return { low: expected - tol, high: expected + tol, expected, tol, _crossDayExempt: tol > BAILING_RULES.DAILY_TOLERANCE_STD };
   // 没有班次信息：返回 null 表示不做区间判断
   return null;
 }
@@ -4109,7 +4155,7 @@ function getRowStatus(d){
   if(isIgnoredRow(d)) return {code:'ignored',cls:'status-ignored',txt:'已忽略'};
   // V8.89：只看标准条，显示达成百分比
   const att = getAttendance(d.emp, d.date, d.uin, d.empEn);
-  const range = getDailyStdRange(att);
+  const range = getDailyStdRange(att, d.emp, d.date);
   if (range && range.expected > 0){
     const pct = (d.totalStd / range.expected * 100);
     const absDiff = Math.abs(d.totalStd - range.expected);
@@ -4208,7 +4254,7 @@ function sortDailyData(data){
   if(App.sortField==='abnormal') {
     const getPct = (d) => {
       const att = getAttendance(d.emp, d.date, d.uin, d.empEn);
-      const range = getDailyStdRange(att);
+      const range = getDailyStdRange(att, d.emp, d.date);
       if (range && range.expected > 0) return d.totalStd / range.expected * 100;
       return 100; // 无班次当 100% 处理
     };
@@ -5530,7 +5576,7 @@ function renderTrend(){
     const ek = x.emp || x.empEn || x.uin || '';
     if (!ek || !x.date) continue;
     const att = getAttendance(x.emp, x.date, x.uin, x.empEn);
-    const range = getDailyStdRange(att);
+    const range = getDailyStdRange(att, x.emp, x.date);
     if (range) {
       const absDiff = Math.abs((x.totalStd || 0) - range.expected);
       if (absDiff > range.tol * BAILING_RULES.DAILY_LEVEL_HIGH) continue; // 严重异常剔除
@@ -5811,6 +5857,25 @@ function shouldSkipFormulaUtil(ur) {
   // 第二天排班存在且 code === '早班1' → 不跳过；否则（无排班 / 不是早班1）→ 跳过
   if (sc && String(sc.code || '').trim() === '早班1') return false;
   return true;
+}
+
+/**
+ * V9.13：工作量异常白名单豁免判定
+ *   用户在 App.workloadExemptSet 里填的中文名（或 UIN），跳过这些异常：
+ *     - A3 timing_spike（计时任务激增）
+ *     - A4 nontask_spike（非任务激增）
+ *     - A12 attend_no_data（出勤但无量级）
+ *     - daily_below / daily_over（单日标准条偏离）
+ *     - period_below / period_over（周期标准条偏离）
+ *   不影响 A7/A8（工时利用率）、A11（考勤）等真正的人员异常
+ *   默认空集合 → 所有人都报；用户在 localStorage 'bailing_workload_exempt' 里编辑
+ */
+function isWorkloadExempt(emp, uin) {
+  const set = App.workloadExemptSet;
+  if (!set || set.size === 0) return false;
+  if (emp && set.has(emp)) return true;
+  if (uin && set.has(uin)) return true;
+  return false;
 }
 
 /**
@@ -12622,6 +12687,67 @@ function applyAnomalyConfig(){
   if(typeof renderManageBoard==='function') renderManageBoard();
 }
 
+// V9.13：工作量白名单豁免（持久化 + 应用）
+function applyWorkloadExempt(rawList){
+  const arr = (rawList || '').split(/[,\s，\n]+/).map(s=>s.trim()).filter(Boolean);
+  App.workloadExemptSet = new Set(arr);
+  try{ localStorage.setItem('bailing_workload_exempt', (rawList||'').trim()); }catch(e){}
+  _fsShowSyncHint('已豁免 '+App.workloadExemptSet.size+' 人', 2000);
+  if(typeof checkAlerts==='function') checkAlerts();
+  if(typeof renderFilteredAlerts==='function') renderFilteredAlerts();
+}
+function loadWorkloadExempt(){
+  try{
+    const raw = localStorage.getItem('bailing_workload_exempt') || '';
+    App.workloadExemptSet = new Set(raw.split(/[,\s，\n]+/).map(s=>s.trim()).filter(Boolean));
+  }catch(e){ App.workloadExemptSet = new Set(); }
+  // V9.13：同步徽标
+  const el = document.getElementById('exemptCount');
+  if (el) el.textContent = (App.workloadExemptSet && App.workloadExemptSet.size) || 0;
+}
+
+// V9.13：豁免白名单编辑器（弹 modal）
+function openWorkloadExemptEditor(){
+  const existing = document.getElementById('workloadExemptModal');
+  if (existing) existing.parentNode.removeChild(existing);
+  const current = Array.from(App.workloadExemptSet || []).join('，');
+  const html = `
+    <div id="workloadExemptModal" style="position:fixed;inset:0;background:rgba(15,23,42,.45);z-index:9999;display:flex;align-items:center;justify-content:center;">
+      <div style="background:#fff;border-radius:12px;width:520px;max-width:92vw;padding:20px 22px;box-shadow:0 8px 32px rgba(15,23,42,.18);">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;">
+          <h3 style="font-size:15px;font-weight:700;color:#1e293b;margin:0;">🛡 工作量异常豁免白名单</h3>
+          <button onclick="document.getElementById('workloadExemptModal').remove()" style="background:transparent;border:0;color:#64748b;font-size:18px;cursor:pointer;">×</button>
+        </div>
+        <div style="font-size:12px;color:#64748b;margin-bottom:8px;line-height:1.6;">
+          白名单内的人，以下工作量异常自动豁免（不再上报）：
+          <div style="margin-top:6px;color:#475569;font-size:11px;background:#f8fafc;padding:8px 10px;border-radius:6px;">
+            • A3 计时任务激增 &nbsp; • A4 非任务时长偏高 &nbsp; • A12 出勤但无量级<br>
+            • 单日标准条偏低/偏高（daily_below/over）<br>
+            • 周期标准条偏低/偏高（period_below/over）
+          </div>
+          <div style="margin-top:6px;color:#475569;font-size:11px;">
+            不影响 A7/A8（工时利用率）、A11（考勤）等真正的人员异常。<br>
+            跨日早班1豁免（±135）已自动生效，无需加白名单。
+          </div>
+        </div>
+        <div style="margin-bottom:12px;">
+          <label style="display:block;font-size:12px;color:#475569;margin-bottom:4px;">白名单（中文姓名 或 UIN，逗号/换行/空格分隔）</label>
+          <textarea id="workloadExemptInput" style="width:100%;height:140px;border:1px solid #e2e8f0;border-radius:8px;padding:10px 12px;font-size:13px;font-family:ui-monospace,Menlo,Consolas,monospace;resize:vertical;box-sizing:border-box;">${escHtml(current)}</textarea>
+        </div>
+        <div style="display:flex;justify-content:flex-end;gap:8px;">
+          <button onclick="document.getElementById('workloadExemptModal').remove()" style="padding:6px 14px;font-size:12px;background:#fff;color:#64748b;border:1px solid #e2e8f0;border-radius:6px;cursor:pointer;">取消</button>
+          <button onclick="saveWorkloadExempt()" style="padding:6px 14px;font-size:12px;background:#4338ca;color:#fff;border:0;border-radius:6px;cursor:pointer;font-weight:600;">保存</button>
+        </div>
+      </div>
+    </div>`;
+  document.body.insertAdjacentHTML('beforeend', html);
+}
+function saveWorkloadExempt(){
+  const raw = (document.getElementById('workloadExemptInput')?.value || '').trim();
+  applyWorkloadExempt(raw);
+  document.getElementById('workloadExemptModal')?.remove();
+}
+
 // V9.5：DIY 看板指标引擎（重构：中文姓名主键 + 纯中文显示 + 可编辑指标）
 // ============================================================
 
@@ -14471,6 +14597,7 @@ function loadFromLocalStorage(){
     }
   }catch(e){}
   loadScheduleStorage();
+  loadWorkloadExempt();
 }
 function saveScheduleStorage(){ if(typeof BailingPersistence!=='undefined'){BailingPersistence.saveSchedule();return;} try{localStorage.setItem('bailing_schedule',JSON.stringify({map:App.scheduleMap,matrix:App.scheduleMatrix}));}catch(e){} }
 function loadScheduleStorage(){ if(typeof BailingPersistence!=='undefined'){BailingPersistence.loadSchedule();return;} try{const raw=localStorage.getItem('bailing_schedule');if(raw){const d=JSON.parse(raw);if(d.map)App.scheduleMap=d.map;if(d.matrix)App.scheduleMatrix=d.matrix;}}catch(e){} }
