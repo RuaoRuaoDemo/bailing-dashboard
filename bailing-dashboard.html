@@ -1,4 +1,4 @@
-<!-- Bailing Dashboard V9.10 - 20260909 - 上传模式+下载离线版 -->
+<!-- Bailing Dashboard V9.11 - 20260909 - 上传模式+下载离线版 -->
 <!--
   ===== 近期版本变更 =====
   V9.5.2 (2026-08-31) 修复「非任务工时统计」被误判成异常表导致 DIY 非任务无数据；
@@ -23,6 +23,9 @@
                       precomputeUtilRateFinal / calcUtilStats 改成统一口径：直接取底表 _utilRate 原值，
                       不再用公式重算，也不再做 11h 封顶修正（_baseAnomaly/_tongH_corrected 不再被设置），
                       保留 shouldSkipFormulaUtil 跳过规则 + utilRateOverrides 手动覆盖优先级
+  V9.11  (2026-09-09) 单日标准条异常 daily_below / daily_over 的 category 从 'utilization' 改为 'workload'，
+                      防止「工作量偏高」被误标成「利用率」类别（97% 利用率正常的人被判成「利用率/严重」，
+                      实际是工作量超出班次理论区间 5×tol；异常页类型列不再误导）
 -->
 <!DOCTYPE html>
 <html lang="zh-CN">
@@ -33,7 +36,7 @@
 <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
 <meta http-equiv="Pragma" content="no-cache">
 <meta http-equiv="Expires" content="0">
-<title>百灵工作量仪表盘 V9.10</title>
+<title>百灵工作量仪表盘 V9.11</title>
 <link rel="stylesheet" href="vendor/tailwind.min.css">
 <script src="vendor/chart.umd.min.js"></script>
 <script src="vendor/xlsx.full.min.js"></script>
@@ -1571,7 +1574,7 @@
   <div class="inspiration-author" id="inspirationAuthor">—— 加油的打工人</div>
   <button onclick="openInspirationManager()" style="position:absolute;right:10px;top:10px;background:rgba(255,255,255,0.6);border:1px solid #cbd5e1;color:#64748b;border-radius:6px;padding:3px 8px;font-size:11px;cursor:pointer;" title="管理语录">⚙ 管理</button>
   <!-- V8.48：版本号挪到这里（右下小角标），主看板顶部不再占位 -->
-  <span style="position:absolute;left:14px;top:50%;transform:translateY(-50%);font-size:10px;color:#94a3b8;font-weight:500;letter-spacing:0.4px;font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;opacity:0.65;" title="当前版本 V9.10（2026-09-09）">v9.10</span>
+  <span style="position:absolute;left:14px;top:50%;transform:translateY(-50%);font-size:10px;color:#94a3b8;font-weight:500;letter-spacing:0.4px;font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;opacity:0.65;" title="当前版本 V9.11（2026-09-09）">v9.11</span>
 </div>
 
 <!-- Modal: Daily Row CRUD -->
@@ -3646,7 +3649,7 @@ function detectAnomaliesEx() {
       if (d.totalStd > 5 && d.totalStd < dayRange.low) {
         anomalies.push({
           emp: empKey, date: dateKey,
-          category: 'utilization', type: 'daily_below', level,
+          category: 'workload', type: 'daily_below', level,
           summary: att.type === 'full' ? '全天班工作量偏低' : '半天班工作量偏低',
           detail: {
             班次类型: att.label || '—', 实际标准条: d.totalStd.toFixed(1),
@@ -3663,7 +3666,7 @@ function detectAnomaliesEx() {
       if (d.totalStd > dayRange.high) {
         anomalies.push({
           emp: empKey, date: dateKey,
-          category: 'utilization', type: 'daily_over', level,
+          category: 'workload', type: 'daily_over', level,
           summary: att.type === 'full' ? '全天班工作量偏高' : '半天班工作量偏高',
           detail: {
             班次类型: att.label || '—', 实际标准条: d.totalStd.toFixed(1),
