@@ -1,4 +1,4 @@
-<!-- Bailing Dashboard V9.9 - 20260909 - 上传模式+下载离线版 -->
+<!-- Bailing Dashboard V9.10 - 20260909 - 上传模式+下载离线版 -->
 <!--
   ===== 近期版本变更 =====
   V9.5.2 (2026-08-31) 修复「非任务工时统计」被误判成异常表导致 DIY 非任务无数据；
@@ -18,6 +18,11 @@
                       休息时间有非任务（att.type='rest' 且 nontaskH>0）；
                       健康度看板公式利用率新增「当天无出勤 且 次日非早班1 → 跳过」规则，
                       不再把没上班的人拉低整体均值（他都没上班，看了也没意义）
+  V9.10  (2026-09-09) 异常页「出勤」列改读 getScheduleAttendH(emp,date) 班表口径，
+                      不再用工时利用率底表的 _attendH（口径不一致，全天班/半天班/休息 都要从班表来）；
+                      precomputeUtilRateFinal / calcUtilStats 改成统一口径：直接取底表 _utilRate 原值，
+                      不再用公式重算，也不再做 11h 封顶修正（_baseAnomaly/_tongH_corrected 不再被设置），
+                      保留 shouldSkipFormulaUtil 跳过规则 + utilRateOverrides 手动覆盖优先级
 -->
 <!DOCTYPE html>
 <html lang="zh-CN">
@@ -28,7 +33,7 @@
 <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
 <meta http-equiv="Pragma" content="no-cache">
 <meta http-equiv="Expires" content="0">
-<title>百灵工作量仪表盘 V9.9</title>
+<title>百灵工作量仪表盘 V9.10</title>
 <link rel="stylesheet" href="vendor/tailwind.min.css">
 <script src="vendor/chart.umd.min.js"></script>
 <script src="vendor/xlsx.full.min.js"></script>
@@ -1566,7 +1571,7 @@
   <div class="inspiration-author" id="inspirationAuthor">—— 加油的打工人</div>
   <button onclick="openInspirationManager()" style="position:absolute;right:10px;top:10px;background:rgba(255,255,255,0.6);border:1px solid #cbd5e1;color:#64748b;border-radius:6px;padding:3px 8px;font-size:11px;cursor:pointer;" title="管理语录">⚙ 管理</button>
   <!-- V8.48：版本号挪到这里（右下小角标），主看板顶部不再占位 -->
-  <span style="position:absolute;left:14px;top:50%;transform:translateY(-50%);font-size:10px;color:#94a3b8;font-weight:500;letter-spacing:0.4px;font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;opacity:0.65;" title="当前版本 V9.9（2026-09-09）">v9.9</span>
+  <span style="position:absolute;left:14px;top:50%;transform:translateY(-50%);font-size:10px;color:#94a3b8;font-weight:500;letter-spacing:0.4px;font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;opacity:0.65;" title="当前版本 V9.10（2026-09-09）">v9.10</span>
 </div>
 
 <!-- Modal: Daily Row CRUD -->
@@ -5802,84 +5807,54 @@ function shouldSkipFormulaUtil(ur) {
 }
 
 /**
- * V8.77 预计算所有 utilRow 的展示利用率
- * 核心逻辑：
- *   - 通航审核h + 计时h + 计量h + 非通航折算h 若 > 11h → 底表异常
- *   - 异常时修正：tongH_corrected = 11 - (计时h + 计量h)
- *   - 展示的利用率用修正后的 tongH 按公式重算
- *   - 底表异常标记到 _baseAnomaly 供诊断面板查看
+ * V9.10 预计算所有 utilRow 的展示利用率
+ * 口径：直接用工时利用率底表的 _utilRate（原值），不再用公式重算，也不再做 11h 封顶修正
+ *   1) 手动覆盖 → 优先
+ *   2) 当天无出勤 + 次日非早班1 → 跳过（最终归零）
+ *   3) 底表 _utilRate 原值 → 兜底
  */
 function precomputeUtilRateFinal(){
   if (!App.utilRows || !App.utilRows.length) return;
-  const CAP = BAILING_RULES.UTIL_HOUR_CAP; // 11h
 
   for (const ur of App.utilRows) {
-    const attendH = Number(ur._attendH) || 0;
-    let tongH     = Number(ur._tongH)   || 0;
-    const meaH    = Number(ur._measureH)|| 0;   // 计量/非通航 h
-    const tmH     = Number(ur._offlineTimingH) || 0; // 计时 h
-
-    // 检测底表异常：合计 > 11h
-    const totalH = tongH + tmH + meaH;
-    let baseAnomaly = false;
-    let tongH_corrected = tongH;
-    if (totalH > CAP) {
-      baseAnomaly = true;
-      // 修正：tongH = 11 - (计时h + 计量h)，至少为 0
-      tongH_corrected = Math.max(0, CAP - (tmH + meaH));
-    }
-    ur._baseAnomaly = baseAnomaly;
-    ur._tongH_corrected = tongH_corrected;
-    ur._totalH_raw = totalH;
-
-    // 用修正后的值计算展示利用率
-    let displayRate = 0;
-    if (attendH > 0) {
-      displayRate = ((meaH + tmH) * 0.8125 + tongH_corrected) / attendH * 100;
-    }
-    // V9.9：当「当天无出勤 且 次日非早班1」时，不计公式利用率 → 把 displayRate/finalRate 归零，
-    //        并清掉 _baseAnomaly / abnormal 标记，避免后续视图把它误判为严重。
+    // V9.10：展示值 = 底表 _utilRate 原值（不再走公式，不再做 tongH 修正）
+    const baseRate = Number(ur._utilRate) || 0;
     const skipFormula = shouldSkipFormulaUtil(ur);
-    if (skipFormula) {
-      displayRate = 0;
-    }
-    ur._utilRateDisplay = displayRate;
-    ur._utilRateComputed = displayRate; // 保持兼容
 
-    // finalRate 选取
     let finalRate;
     const empKey = ur._emp || ur._chineseName || ur._uin || '';
     const mk1 = empKey + '|' + ur._dateStr;
     const mk2 = ur._uin + '|' + ur._dateStr;
     const ov = (App.utilRateOverrides || {});
-    if (ov[mk1] !== undefined && ov[mk1] !== null && ov[mk1] !== '') {
+    if (skipFormula) {
+      finalRate = 0;
+    } else if (ov[mk1] !== undefined && ov[mk1] !== null && ov[mk1] !== '') {
       finalRate = Number(ov[mk1]) || 0;
     } else if (ov[mk2] !== undefined && ov[mk2] !== null && ov[mk2] !== '') {
       finalRate = Number(ov[mk2]) || 0;
     } else if (ur._overrideRate !== undefined && ur._overrideRate !== null) {
       finalRate = Number(ur._overrideRate) || 0;
     } else {
-      finalRate = displayRate;
+      finalRate = baseRate;
     }
-    if (skipFormula) finalRate = 0;
+
+    ur._utilRateDisplay = baseRate;     // V9.10：展示口径 = 底表原值（不再公式重算）
+    ur._utilRateComputed = baseRate;     // 兼容旧字段
     ur._utilRateFinal = finalRate;
     ur._isAbnormal = isUtilAbnormal(finalRate);
     ur._utilLevel = getUtilAnomalyLevel(finalRate);
-    if (typeof BailingFormulas !== 'undefined' && BailingFormulas.utilLevel) {
-    }
   }
 }
 
 /**
- * V8.68 工时利用率统计
- * 核心原则：始终以"小时法"重算利用率（公式：((计量+计时)×0.8125 + 通航审核h) / 出勤h × 100）
- *           Excel 底表 _utilRate 仅作为参考值；若与计算值差异超过 1%，以计算值为准。
- * 这样避免底表脏数据（如杜磊 4-30 的 1.1%）导致错误统计。
+ * V9.10 工时利用率统计
+ * 口径：与 precomputeUtilRateFinal 一致 —— 直接取底表 _utilRate 原值，不再公式重算
+ *       （底表的 _utilRate 已经过 precompute 写入 _utilRateDisplay/_utilRateFinal）
+ *       这里只做按 emp 聚合：跳过 shouldSkipFormulaUtil + 应用手动覆盖
  */
 function calcUtilStats(scopedData) {
   const empDateSet = new Set();
   const empUtilMap = {};
-  const useFormula = (typeof BailingFormulas !== 'undefined' && BailingFormulas.calcUtilRateByHours);
 
   for(const d of scopedData) {
     const empKey = d.emp || d.empEn || d.uin || '';
@@ -5889,7 +5864,7 @@ function calcUtilStats(scopedData) {
     if(empDateSet.has(fullKey)) continue;
     empDateSet.add(fullKey);
 
-    // 查找对应的工时利用率底表数据（仅为了拿 attendH/tongH/measureH/timingH）
+    // 查找对应的工时利用率底表数据
     let utilRow = null;
     for(const ur of App.utilRows) {
       let matched = false;
@@ -5902,39 +5877,21 @@ function calcUtilStats(scopedData) {
       }
     }
 
-    // V9.9：当天无出勤 + 次日非早班1 → 不计公式利用率（他都没上班）
+    // V9.9：当天无出勤 + 次日非早班1 → 不计利用率（他都没上班）
     if(utilRow && shouldSkipFormulaUtil(utilRow)) continue;
 
     if(utilRow) {
-      // —— 重算利用率（canonical 公式）——
-      const attendH = Number(utilRow._attendH) || 0;
-      const tongH   = Number(utilRow._tongH)   || 0;   // 通航审核 h
-      const meaH    = Number(utilRow._measureH)|| 0;   // 非通航/计量 h
-      const tmH     = Number(utilRow._offlineTimingH) || 0; // 计时 h
+      // V9.10：直接取底表 _utilRate 原值（precompute 已写入 _utilRateDisplay）
+      const baseRate = Number(utilRow._utilRate) || 0;
 
-      let computed = 0;
-      if (useFormula) {
-        computed = BailingFormulas.calcUtilRateByHours({
-          measureHours: meaH, timingHours: tmH, tongHours: tongH, attendHours: attendH
-        });
-      } else if (attendH > 0) {
-        computed = ((meaH + tmH) * 0.8125 + tongH) / attendH * 100;
-      }
-
-      // V8.77 优先级：手动覆盖 > 公式计算值（经11h修正）> Excel 原值
+      // 手动覆盖优先级（与 precompute 一致）
       const manualKey = empKey + '|' + dateKey;
       const manualRate = (App.utilRateOverrides && App.utilRateOverrides[manualKey] !== undefined)
         ? Number(App.utilRateOverrides[manualKey]) : null;
 
-      // 使用 precompute 写入的修正后 displayRate
-      const displayRate = (utilRow._utilRateDisplay !== undefined) ? Number(utilRow._utilRateDisplay) : computed;
+      const finalRate = (manualRate !== null) ? manualRate : baseRate;
 
-      let finalRate;
-      if (manualRate !== null) finalRate = manualRate;
-      else finalRate = displayRate;
-
-      // 回写到 utilRow 供其他视图复用（日汇总、趋势图、详情）
-      utilRow._utilRateComputed = computed;
+      // 回写供其他视图复用
       utilRow._utilRateFinal = finalRate;
 
       if(!empUtilMap[empKey]) empUtilMap[empKey] = { sum: 0, count: 0, abnormal: false };
@@ -6912,7 +6869,7 @@ function renderFilteredAlerts() {
       { label:'非通航标准条', value: nontongStd.toFixed(0), color:'#64748b' },
       { label:'计时标准条', value: timingStd.toFixed(0), color:'#0ea5e9' },
       { label:'非任务标准条', value: nontaskStd.toFixed(0), color:'#f59e0b' },
-      { label:'出勤时长', value: ur ? (ur._attendH||0).toFixed(1)+'h' : '—', color:'#475569' },
+      { label:'出勤时长', value: ur ? ((typeof getScheduleAttendH==='function') ? getScheduleAttendH(g.emp, g.date)+'h' : (ur._attendH||0).toFixed(1)+'h') : '—', color:'#475569' },
       { label:'通航审核时长', value: ur ? ((ur._baseAnomaly ? ur._tongH_corrected : ur._tongH)||0).toFixed(2)+'h' + (ur._baseAnomaly ? ' ⚠' : '') : '—', color:'#3b82f6' }
     ];
     const metricsHtml = metricCards.map(m => `
@@ -6972,7 +6929,7 @@ function renderFilteredAlerts() {
     g._nontong = dd ? dd.nontongStd : 0;
     g._timing = dd ? dd.timingStd : 0;
     g._nontask = dd ? dd.nontaskStd : 0;
-    g._attend = ur ? (ur._attendH||0) : 0;
+    g._attend = (typeof getScheduleAttendH === 'function') ? getScheduleAttendH(g.emp, g.date) : (ur ? (ur._attendH||0) : 0);
     g._tongH = ur ? ((ur._baseAnomaly ? ur._tongH_corrected : ur._tongH)||0) : 0;
     g._util = ur ? (getUtilRateFinal(ur)||0) : 0;
   }
@@ -7013,7 +6970,7 @@ function renderFilteredAlerts() {
     const s=dd?dd.totalStd:0,ts=dd?dd.tongStd:0,ns=dd?dd.nontongStd:0,tis=dd?dd.timingStd:0,nts=dd?dd.nontaskStd:0;
     const tq=dd?(dd.rows||[]).reduce((a,r)=>a+(Number(r._tong)||0),0):0;
     const nq=dd?(dd.rows||[]).reduce((a,r)=>a+(Number(r._nontong)||0),0):0;
-    const uR=ur?getUtilRateFinal(ur):null,aH=ur?(ur._attendH||0):0;
+    const uR=ur?getUtilRateFinal(ur):null,aH=(typeof getScheduleAttendH==='function') ? getScheduleAttendH(g.emp, g.date) : (ur?(ur._attendH||0):0);
     const tH=ur?((ur._baseAnomaly?ur._tongH_corrected:ur._tongH)||0):0;
     const tiH=ur?(ur._offlineTimingH||0):0,ntH=ur?(ur._nontaskH||0):0;
     const cat=Array.from(g.categories).map(c=>({workload:'工作量',utilization:'利用率',attendance:'考勤',base:'底表',zanli:'暂离',audit:'审核时长',rest:'休息日'}[c]||c)).join('/');
