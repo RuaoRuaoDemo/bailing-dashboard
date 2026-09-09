@@ -1,4 +1,4 @@
-<!-- Bailing Dashboard V9.11 - 20260909 - 上传模式+下载离线版 -->
+<!-- Bailing Dashboard V9.12 - 20260909 - 上传模式+下载离线版 -->
 <!--
   ===== 近期版本变更 =====
   V9.5.2 (2026-08-31) 修复「非任务工时统计」被误判成异常表导致 DIY 非任务无数据；
@@ -26,6 +26,10 @@
   V9.11  (2026-09-09) 单日标准条异常 daily_below / daily_over 的 category 从 'utilization' 改为 'workload'，
                       防止「工作量偏高」被误标成「利用率」类别（97% 利用率正常的人被判成「利用率/严重」，
                       实际是工作量超出班次理论区间 5×tol；异常页类型列不再误导）
+  V9.12  (2026-09-09) 再清理 4 处 utilization 误归类：timing_spike / nontask_spike / attend_no_data / period_below|over
+                      全部改为 workload —— 这几类异常讲的是「计时/非任务/工作量/周期」结构问题，
+                      跟工时利用率没关系，summary 都是「非任务时长偏高」「全天班工作量偏低」之类。
+                      现在只剩 A7/A8 两条真正的「工时利用率」异常在 utilization 类别下
 -->
 <!DOCTYPE html>
 <html lang="zh-CN">
@@ -36,7 +40,7 @@
 <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
 <meta http-equiv="Pragma" content="no-cache">
 <meta http-equiv="Expires" content="0">
-<title>百灵工作量仪表盘 V9.11</title>
+<title>百灵工作量仪表盘 V9.12</title>
 <link rel="stylesheet" href="vendor/tailwind.min.css">
 <script src="vendor/chart.umd.min.js"></script>
 <script src="vendor/xlsx.full.min.js"></script>
@@ -1574,7 +1578,7 @@
   <div class="inspiration-author" id="inspirationAuthor">—— 加油的打工人</div>
   <button onclick="openInspirationManager()" style="position:absolute;right:10px;top:10px;background:rgba(255,255,255,0.6);border:1px solid #cbd5e1;color:#64748b;border-radius:6px;padding:3px 8px;font-size:11px;cursor:pointer;" title="管理语录">⚙ 管理</button>
   <!-- V8.48：版本号挪到这里（右下小角标），主看板顶部不再占位 -->
-  <span style="position:absolute;left:14px;top:50%;transform:translateY(-50%);font-size:10px;color:#94a3b8;font-weight:500;letter-spacing:0.4px;font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;opacity:0.65;" title="当前版本 V9.11（2026-09-09）">v9.11</span>
+  <span style="position:absolute;left:14px;top:50%;transform:translateY(-50%);font-size:10px;color:#94a3b8;font-weight:500;letter-spacing:0.4px;font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;opacity:0.65;" title="当前版本 V9.12（2026-09-09）">v9.12</span>
 </div>
 
 <!-- Modal: Daily Row CRUD -->
@@ -3430,7 +3434,7 @@ function detectAnomaliesEx() {
       anomalies.push({
         emp: empKey,
         date: dateKey,
-        category: 'utilization',
+        category: 'workload',
         type: 'timing_spike',
         level: timingLevel,
         summary: '计时任务时长异常偏高',
@@ -3450,7 +3454,7 @@ function detectAnomaliesEx() {
       anomalies.push({
         emp: empKey,
         date: dateKey,
-        category: 'utilization',
+        category: 'workload',
         type: 'nontask_spike',
         level: ntLevel,
         summary: '非任务时长偏高',
@@ -3729,7 +3733,7 @@ function detectAnomaliesEx() {
     }
     anomalies.push({
       emp: emp, date: date,
-      category: 'utilization', type: 'attend_no_data',
+      category: 'workload', type: 'attend_no_data',
       level: dataStd < 0 ? 'high' : 'medium',
       summary: dataStd < 0 ? '出勤但无工作量' : '出勤但标准条极低',
       detail: { 员工:emp, 日期:date, 班次:scName, 标准条: dataStd<0?'无记录':dataStd.toFixed(1) },
@@ -3875,7 +3879,7 @@ function detectPeriodStdAnomalies(scopedData){
     anomalies.push({
       emp: g.emp,
       date: g.dateFrom + ' ~ ' + g.dateTo,
-      category: 'utilization',
+      category: 'workload',
       type: diff < 0 ? 'period_below' : 'period_over',
       level,
       summary: '周期标准条' + (diff < 0 ? '偏低' : '偏高'),
