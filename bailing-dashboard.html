@@ -1,4 +1,4 @@
-<!-- Bailing Dashboard V9.8 - 20260831 - 上传模式+下载离线版 -->
+<!-- Bailing Dashboard V9.9 - 20260909 - 上传模式+下载离线版 -->
 <!--
   ===== 近期版本变更 =====
   V9.5.2 (2026-08-31) 修复「非任务工时统计」被误判成异常表导致 DIY 非任务无数据；
@@ -12,6 +12,12 @@
   V9.8   (2026-08-31) 修复非任务指标恒为 0（nontaskMap 改为 row-like 对象）；
                       预设指标改为「非任务标准条(时长)」按小时展示；
                       DIY 配置卡片放大操作按钮、编辑态切数据源保留已选字段
+  V9.9   (2026-09-09) 主看板异常过滤掉「排班表里没有这天」（att.type='none'）这一数据缺口，
+                      原来会被算成 严重/考勤 的假阳 1096 条全部清掉；新增 3 类异常：
+                      暂离（zanliMap 超阈值）、审核时长过短（出勤≥6h 但通航<2h）、
+                      休息时间有非任务（att.type='rest' 且 nontaskH>0）；
+                      健康度看板公式利用率新增「当天无出勤 且 次日非早班1 → 跳过」规则，
+                      不再把没上班的人拉低整体均值（他都没上班，看了也没意义）
 -->
 <!DOCTYPE html>
 <html lang="zh-CN">
@@ -22,7 +28,7 @@
 <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
 <meta http-equiv="Pragma" content="no-cache">
 <meta http-equiv="Expires" content="0">
-<title>百灵工作量仪表盘 V9.8</title>
+<title>百灵工作量仪表盘 V9.9</title>
 <link rel="stylesheet" href="vendor/tailwind.min.css">
 <script src="vendor/chart.umd.min.js"></script>
 <script src="vendor/xlsx.full.min.js"></script>
@@ -1560,7 +1566,7 @@
   <div class="inspiration-author" id="inspirationAuthor">—— 加油的打工人</div>
   <button onclick="openInspirationManager()" style="position:absolute;right:10px;top:10px;background:rgba(255,255,255,0.6);border:1px solid #cbd5e1;color:#64748b;border-radius:6px;padding:3px 8px;font-size:11px;cursor:pointer;" title="管理语录">⚙ 管理</button>
   <!-- V8.48：版本号挪到这里（右下小角标），主看板顶部不再占位 -->
-  <span style="position:absolute;left:14px;top:50%;transform:translateY(-50%);font-size:10px;color:#94a3b8;font-weight:500;letter-spacing:0.4px;font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;opacity:0.65;" title="当前版本 V9.8（2026-08-31）">v9.8</span>
+  <span style="position:absolute;left:14px;top:50%;transform:translateY(-50%);font-size:10px;color:#94a3b8;font-weight:500;letter-spacing:0.4px;font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;opacity:0.65;" title="当前版本 V9.9（2026-09-09）">v9.9</span>
 </div>
 
 <!-- Modal: Daily Row CRUD -->
@@ -3534,18 +3540,19 @@ function detectAnomaliesEx() {
       });
     }
 
-    // ========== A11: 未出勤/无班次但有工作量（旷工/休息/班次缺失但有审核量）==========
-    // V8.52：新增 type==='none'（无班次）场景，删掉班次后应立即报异常
-    if ((att.type === 'off' || att.type === 'rest' || att.type === 'none') && d.totalStd > 5) {
-      var a11Status = att.type === 'off' ? '旷工'
-        : (att.type === 'rest' ? '休息' : '无班次');
+    // ========== A11: 未出勤但有工作量（仅对真实排班记录为 off/rest 才报）==========
+    // V9.9：att.type === 'none'（排班表里压根没这个员工这一天的记录）视为「数据缺口」而非异常
+    //         —— 否则只要排班表没导入，所有 working rows 都会被标成 严重/考勤，造成 1096 假阳
+    //         —— 这类情况由 A12（出勤但无量级）反过来覆盖（排班表有=实际数据缺）
+    if ((att.type === 'off' || att.type === 'rest') && d.totalStd > 5) {
+      var a11Status = att.type === 'off' ? '旷工' : '休息';
       anomalies.push({
         emp: empKey,
         date: dateKey,
         category: 'attendance',
-        type: att.type === 'none' ? 'no_schedule_with_work' : 'no_attendance_with_work',
+        type: 'no_attendance_with_work',
         level: 'high',
-        summary: att.type === 'none' ? '无班次但有工作量' : '未出勤但有工作量',
+        summary: '未出勤但有工作量',
         detail: {
           出勤状态: a11Status,
           排班期望: getAttLabel(att.type),
@@ -3554,9 +3561,70 @@ function detectAnomaliesEx() {
           非通航审核: (d.nontong || 0).toFixed(1),
           计时任务: (d.timing || 0).toFixed(1)
         },
-        suggestion: att.type === 'none'
-          ? '该员工当日没有排班记录，但产生了工作量，请补登班次'
-          : '排班显示旷工/休息，但产生了工作量，可能是调休未登记或数据错误'
+        suggestion: '排班显示旷工/休息，但产生了工作量，可能是调休未登记或数据错误'
+      });
+    }
+
+    // ========== A13: 暂离时长偏多（来自 zanliMap：durMin > 阈值 或 cnt ≥ 3）==========
+    // V9.9：新增异常类型 —— 暂离数据由 非任务表 解析后写入 App.zanliMap（key=emp|date）
+    {
+      const zl = (App.zanliMap && (App.zanliMap.get(empKey+'_'+dateKey) || App.zanliMap.get(d.uin+'_'+dateKey))) || null;
+      if (zl && (zl.durMin > 0 || zl.cnt > 0)) {
+        const cfg = App.anomalyConfig || {};
+        const maxT = Number(cfg.zanliMaxTotalMin) || 60;       // 总时长上限
+        const maxS = Number(cfg.zanliMaxSingleMin) || 15;      // 单次时长上限
+        const singleEst = zl.cnt > 0 ? zl.durMin / zl.cnt : zl.durMin;
+        if (zl.durMin > maxT || singleEst > maxS || zl.cnt >= 3) {
+          const lvl = (zl.durMin > maxT * 1.5 || singleEst > maxS * 2) ? 'high'
+                     : (zl.durMin > maxT || singleEst > maxS) ? 'medium' : 'low';
+          anomalies.push({
+            emp: empKey, date: dateKey,
+            category: 'zanli', type: 'zanli_excessive', level: lvl,
+            summary: `暂离偏多（${zl.durMin}min / ${zl.cnt}次）`,
+            detail: {
+              暂离总时长: zl.durMin + 'min',
+              暂离次数: zl.cnt + '次',
+              平均每次: singleEst.toFixed(1) + 'min',
+              阈值: '总时长>' + maxT + 'min 或 单次>' + maxS + 'min 或 次数≥3'
+            },
+            suggestion: '建议核实当日是否多次长时间离岗'
+          });
+        }
+      }
+    }
+
+    // ========== A14: 审核时长过短（出勤≥6h 但 通航审核 h < 2h）==========
+    // V9.9：新增异常类型 —— 出勤满半天以上却几乎没有审核产出，可能是任务未提报
+    if (attendH >= 6 && tongH < 2) {
+      anomalies.push({
+        emp: empKey, date: dateKey,
+        category: 'audit', type: 'short_audit_time', level: tongH === 0 ? 'medium' : 'low',
+        summary: tongH === 0 ? '当日无审核记录' : '审核时长偏短',
+        detail: {
+          出勤时长: attendH.toFixed(2) + 'h',
+          通航审核: tongH.toFixed(2) + 'h',
+          '计量/非通航': measureH.toFixed(2) + 'h',
+          计时任务: offlineTimingH.toFixed(2) + 'h'
+        },
+        suggestion: tongH === 0
+          ? '当日无任何审核产出，请确认是否漏提报'
+          : '出勤满半天但审核不足 2h，可能任务分配偏少或数据漏提报'
+      });
+    }
+
+    // ========== A15: 休息时间有非任务（排班为休息 但 提交了非任务记录）==========
+    // V9.9：新增异常类型 —— 休息日安排了非任务（培训/会议等），需确认是否合理计入
+    if (att.type === 'rest' && nontaskH > 0) {
+      anomalies.push({
+        emp: empKey, date: dateKey,
+        category: 'rest', type: 'rest_with_nontask', level: 'low',
+        summary: '休息日有非任务记录',
+        detail: {
+          排班状态: '休息',
+          非任务时长: nontaskH.toFixed(2) + 'h',
+          出勤时长: attendH.toFixed(2) + 'h'
+        },
+        suggestion: '休息日如有培训/会议等安排，请确认是否需要改排班为半天或全天'
       });
     }
 
@@ -5705,6 +5773,35 @@ function getUtilRateFinal(ur){
 }
 
 /**
+ * V9.9：判定一行利用率是否要"不看公式"
+ *   规则：当天无出勤（attendH=0）且 第二天排班 ≠ '早班1' 的，就不算他公式利用率（他都没上班）
+ *   例外：第二天排班是 '早班1'（07:00-16:00 最早班），仍按公式计算 —— 可能存在跨班次衔接
+ *   返回 true 表示「跳过此行（不计分母）」；返回 false 表示「正常计入」
+ */
+function shouldSkipFormulaUtil(ur) {
+  if (!ur) return false;
+  const attendH = Number(ur._attendH) || 0;
+  if (attendH > 0) return false;   // 当天有出勤 → 正常计
+  const empKey = ur._emp || ur._chineseName || ur._uin || '';
+  const dateStr = ur._dateStr;
+  if (!empKey || !dateStr) return true;
+  // 找第二天排班（多种 emp 形态都试一遍，避免 key 不匹配）
+  const d = new Date(dateStr + 'T00:00:00');
+  if (isNaN(d.getTime())) return true;
+  d.setDate(d.getDate() + 1);
+  const nd = d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0') + '-' + String(d.getDate()).padStart(2,'0');
+  const sc = App.scheduleMap && (
+    App.scheduleMap[empKey + '_' + nd] ||
+    App.scheduleMap[(ur._chineseName || '') + '_' + nd] ||
+    App.scheduleMap[(ur._emp || '') + '_' + nd] ||
+    App.scheduleMap[(ur._uin || '') + '_' + nd]
+  );
+  // 第二天排班存在且 code === '早班1' → 不跳过；否则（无排班 / 不是早班1）→ 跳过
+  if (sc && String(sc.code || '').trim() === '早班1') return false;
+  return true;
+}
+
+/**
  * V8.77 预计算所有 utilRow 的展示利用率
  * 核心逻辑：
  *   - 通航审核h + 计时h + 计量h + 非通航折算h 若 > 11h → 底表异常
@@ -5740,6 +5837,12 @@ function precomputeUtilRateFinal(){
     if (attendH > 0) {
       displayRate = ((meaH + tmH) * 0.8125 + tongH_corrected) / attendH * 100;
     }
+    // V9.9：当「当天无出勤 且 次日非早班1」时，不计公式利用率 → 把 displayRate/finalRate 归零，
+    //        并清掉 _baseAnomaly / abnormal 标记，避免后续视图把它误判为严重。
+    const skipFormula = shouldSkipFormulaUtil(ur);
+    if (skipFormula) {
+      displayRate = 0;
+    }
     ur._utilRateDisplay = displayRate;
     ur._utilRateComputed = displayRate; // 保持兼容
 
@@ -5758,6 +5861,7 @@ function precomputeUtilRateFinal(){
     } else {
       finalRate = displayRate;
     }
+    if (skipFormula) finalRate = 0;
     ur._utilRateFinal = finalRate;
     ur._isAbnormal = isUtilAbnormal(finalRate);
     ur._utilLevel = getUtilAnomalyLevel(finalRate);
@@ -5797,6 +5901,9 @@ function calcUtilStats(scopedData) {
         break;
       }
     }
+
+    // V9.9：当天无出勤 + 次日非早班1 → 不计公式利用率（他都没上班）
+    if(utilRow && shouldSkipFormulaUtil(utilRow)) continue;
 
     if(utilRow) {
       // —— 重算利用率（canonical 公式）——
@@ -6238,8 +6345,10 @@ function renderAlertOverview() {
   const empCount = new Set(latestDayData.map(d => d.emp)).size;
 
   // ---- 利用率页卡数据 ----
-  const utilRowsToday = (App.utilRows || []).filter(u => u._dateStr === latestDate);
-  const utilRowsAll = App.utilRows || [];
+  // V9.9：当「当天无出勤 且 次日非早班1」时，过滤掉，不计入任何均值/极值/异常数
+  const skipFn = (typeof shouldSkipFormulaUtil === 'function') ? shouldSkipFormulaUtil : (function(){return false;});
+  const utilRowsToday = (App.utilRows || []).filter(u => u._dateStr === latestDate && !skipFn(u));
+  const utilRowsAll = (App.utilRows || []).filter(u => !skipFn(u));
   let avgUtil = 0, utilAbn = 0, utilMax = 0, utilMin = 999, utilMaxEmp = '', utilMinEmp = '';
   if(utilRowsToday.length){
     let sum = 0;
@@ -6649,9 +6758,9 @@ function openAlertFilterPage() {
     if(dynG.length) gOpts.push({label:'组织架构', items:dynG});
     App._alertEmpMS = BailingMultiSelect.create({ container:'#filterAlertEmpMulti', items:empList, placeholder:'全部员工', unit:'人', search:true, onChange: renderFilteredAlerts });
     App._alertGroupMS = BailingMultiSelect.create({ container:'#filterAlertGroupMulti', groups:gOpts, placeholder:'全部分组', unit:'组', search:true, onChange: renderFilteredAlerts });
-    App._alertCatMS = BailingMultiSelect.create({ container:'#filterAlertCatMulti', items:['工作量','利用率','考勤'], placeholder:'全部分类', unit:'类', onChange: function(){ 
+    App._alertCatMS = BailingMultiSelect.create({ container:'#filterAlertCatMulti', items:['工作量','利用率','考勤','暂离','审核时长','休息日'], placeholder:'全部分类', unit:'类', onChange: function(){
       const vals = App._alertCatMS.getValues();
-      const map = {'工作量':'workload','利用率':'utilization','考勤':'attendance'};
+      const map = {'工作量':'workload','利用率':'utilization','考勤':'attendance','暂离':'zanli','审核时长':'audit','休息日':'rest'};
       App._alertActiveTab = vals.length === 1 ? (map[vals[0]]||'all') : 'all';
       renderFilteredAlerts();
     }});
@@ -6774,7 +6883,7 @@ function renderFilteredAlerts() {
     const worstBg = g.worst==='high' ? '#fef2f2' : g.worst==='medium' ? '#fffbeb' : '#f8fafc';
     const worstText = g.worst==='high' ? '严重' : g.worst==='medium' ? '一般' : '轻微';
     const catLabels = Array.from(g.categories).map(c => {
-      const meta = { workload:'工作量', utilization:'利用率', attendance:'考勤', base:'底表' };
+      const meta = { workload:'工作量', utilization:'利用率', attendance:'考勤', base:'底表', zanli:'暂离', audit:'审核时长', rest:'休息日' };
       return meta[c] || c;
     }).join(' · ');
     const detailId = 'agg-detail-' + idx;
@@ -6907,7 +7016,7 @@ function renderFilteredAlerts() {
     const uR=ur?getUtilRateFinal(ur):null,aH=ur?(ur._attendH||0):0;
     const tH=ur?((ur._baseAnomaly?ur._tongH_corrected:ur._tongH)||0):0;
     const tiH=ur?(ur._offlineTimingH||0):0,ntH=ur?(ur._nontaskH||0):0;
-    const cat=Array.from(g.categories).map(c=>({workload:'工作量',utilization:'利用率',attendance:'考勤',base:'底表'}[c]||c)).join('/');
+    const cat=Array.from(g.categories).map(c=>({workload:'工作量',utilization:'利用率',attendance:'考勤',base:'底表',zanli:'暂离',audit:'审核时长',rest:'休息日'}[c]||c)).join('/');
     const lc2=g.worst==='high'?'#ef4444':g.worst==='medium'?'#f59e0b':'#94a3b8';
     const lt=g.worst==='high'?'严重':g.worst==='medium'?'一般':'轻微';
     const ak=escAttr(g.emp+'|'+g.date);
@@ -7283,7 +7392,10 @@ function getCategoryLabel(category) {
     'workload': '工作量',
     'attendance': '考勤',
     'utilization': '利用率',
-    'data': '数据'
+    'data': '数据',
+    'zanli': '暂离',
+    'audit': '审核时长',
+    'rest': '休息日'
   };
   return labels[category] || category || '其他';
 }
