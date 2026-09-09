@@ -1,4 +1,4 @@
-<!-- Bailing Dashboard V9.14 - 20260909 - 上传模式+下载离线版 -->
+<!-- Bailing Dashboard V9.15 - 20260909 - 上传模式+下载离线版 -->
 <!--
   ===== 近期版本变更 =====
   V9.5.2 (2026-08-31) 修复「非任务工时统计」被误判成异常表导致 DIY 非任务无数据；
@@ -58,7 +58,7 @@
 <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
 <meta http-equiv="Pragma" content="no-cache">
 <meta http-equiv="Expires" content="0">
-<title>百灵工作量仪表盘 V9.14</title>
+<title>百灵工作量仪表盘 V9.15</title>
 <link rel="stylesheet" href="vendor/tailwind.min.css">
 <script src="vendor/chart.umd.min.js"></script>
 <script src="vendor/xlsx.full.min.js"></script>
@@ -1596,7 +1596,7 @@
   <div class="inspiration-author" id="inspirationAuthor">—— 加油的打工人</div>
   <button onclick="openInspirationManager()" style="position:absolute;right:10px;top:10px;background:rgba(255,255,255,0.6);border:1px solid #cbd5e1;color:#64748b;border-radius:6px;padding:3px 8px;font-size:11px;cursor:pointer;" title="管理语录">⚙ 管理</button>
   <!-- V8.48：版本号挪到这里（右下小角标），主看板顶部不再占位 -->
-  <span style="position:absolute;left:14px;top:50%;transform:translateY(-50%);font-size:10px;color:#94a3b8;font-weight:500;letter-spacing:0.4px;font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;opacity:0.65;" title="当前版本 V9.14（2026-09-09）">v9.14</span>
+  <span style="position:absolute;left:14px;top:50%;transform:translateY(-50%);font-size:10px;color:#94a3b8;font-weight:500;letter-spacing:0.4px;font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;opacity:0.65;" title="当前版本 V9.15（2026-09-09）">v9.15</span>
 </div>
 
 <!-- Modal: Daily Row CRUD -->
@@ -14423,6 +14423,16 @@ function renderManageBoard(){
       const isWorkDay = sch && sch.type !== 'rest' && sch.type !== 'leave' && !/休|假/.test(sch.name||'');
       const isRestDay = !sch || sch.type === 'rest' || sch.type === 'leave' || /休/.test(sch.name||'');
 
+      // V9.14.1：跨日早班1 豁免（早班1=07:00-16:00，06:00-07:00 的 1h=125 条 算到前一天）
+      //           当天是早班1（少 125）/ 明天是早班1（多 125）→ 容差双向扩 ±135
+      // V9.14：normal 区间也按 WORKLOAD_NORMAL_LOW/HIGH 比例缩放（[900, 1250] → 半天 [450, 625]）
+      const isCrossDay = isWorkDay && typeof isCrossDayZaoBan1 === 'function' && isCrossDayZaoBan1(emp, iso);
+      const ratio = expectedStd > 0 ? expectedStd / 1000 : 1;
+      const baseLow  = (BAILING_RULES.WORKLOAD_NORMAL_LOW  || 900) * ratio;
+      const baseHigh = (BAILING_RULES.WORKLOAD_NORMAL_HIGH || 1250) * ratio;
+      const dayLow  = isCrossDay ? (baseLow  - (BAILING_RULES.CROSS_DAY_ZAO_BAN1_TOL || 135)) : baseLow;
+      const dayHigh = isCrossDay ? (baseHigh + (BAILING_RULES.CROSS_DAY_ZAO_BAN1_TOL || 135)) : baseHigh;
+
       let val = d ? (d.totalStd || 0) : 0;
       rowTotal += val;
       const valRounded = Math.round(val);
@@ -14434,17 +14444,24 @@ function renderManageBoard(){
         cellTitle = '休息日有' + valRounded + '标准条产出';
       } else if(isRestDay){
         cellStyle = 'color:#d1d5db;';
-      } else if(isWorkDay && val < expectedStd - STD_TOLERANCE){
+      } else if(isWorkDay && val < dayLow){
         // 上班了但标准条不够 → 红色
         cellStyle = 'background:#fef2f2;color:#dc2626;font-weight:700;border-bottom:2px solid #f87171;cursor:pointer;';
-        cellTitle = '低于应产出' + Math.round(expectedStd - val) + '条';
-      } else if(isWorkDay && val > expectedStd + STD_TOLERANCE){
+        cellTitle = '低于应产出' + Math.round(dayLow - val) + '条（区间 [' + dayLow.toFixed(0) + ', ' + dayHigh.toFixed(0) + ']）'
+          + (isCrossDay ? '；跨日早班1 ±135 豁免已生效' : '');
+      } else if(isWorkDay && val > dayHigh){
         // 超出应产出 → 绿色
         cellStyle = 'background:#ecfdf5;color:#059669;font-weight:600;cursor:pointer;';
-        cellTitle = '超产' + Math.round(val - expectedStd) + '条';
+        cellTitle = '超产' + Math.round(val - dayHigh) + '条（区间 [' + dayLow.toFixed(0) + ', ' + dayHigh.toFixed(0) + ']）'
+          + (isCrossDay ? '；跨日早班1 ±135 豁免已生效' : '');
       } else if(isWorkDay){
         // 正常范围
         cellStyle = 'cursor:pointer;';
+        if (isCrossDay) {
+          // V9.14.1：跨日早班1 衔接日加视觉提示（橙色虚线边框）
+          cellStyle += 'outline:2px dashed #f59e0b;outline-offset:-1px;';
+          cellTitle = '跨日早班1 衔接日（区间 [' + dayLow.toFixed(0) + ', ' + dayHigh.toFixed(0) + ']，±135 豁免已生效）';
+        }
       } else {
         cellStyle = 'color:#94a3b8;';
       }
@@ -14462,13 +14479,17 @@ function renderManageBoard(){
       }
 
       const cellContent = (isRestDay && val <= 0) ? '-' : String(valRounded);
+      // V9.14.1：跨日早班1 在数字右上角加一个小"跨日"角标（即使 val 正常也加，便于一眼看出豁免）
+      const crossDayBadge = isCrossDay
+        ? '<span style="display:inline-block;margin-left:3px;padding:0 4px;font-size:8px;line-height:1.4;color:#fff;background:linear-gradient(135deg,#f59e0b,#ea580c);border-radius:6px;font-weight:700;vertical-align:top;" title="跨日早班1：±135 豁免已生效">跨</span>'
+        : '';
       // 工作日都可点击（包括0），休息日有数据也可点击
       if(isWorkDay || (val > 0)){
         clickAttr = 'onclick="showMgrStdDetail(\'' + escAttr(emp) + '\',\'' + escAttr(iso) + '\')"';
         if(!cellStyle.includes('cursor')) cellStyle += 'cursor:pointer;';
       }
 
-      html += '<td ' + clickAttr + ' style="' + cellStyle + '" title="' + escHtml(cellTitle) + '">' + cellContent + '</td>';
+      html += '<td ' + clickAttr + ' style="' + cellStyle + '" title="' + escHtml(cellTitle) + '">' + cellContent + crossDayBadge + '</td>';
     }
 
     // 总计列
