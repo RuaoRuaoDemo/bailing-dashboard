@@ -1,4 +1,4 @@
-<!-- Bailing Dashboard V9.15 - 20260909 - 上传模式+下载离线版 -->
+<!-- Bailing Dashboard V9.16 - 20261007 - 量级口径分离：工时表不再充当工作量量级 -->
 <!--
   ===== 近期版本变更 =====
   V9.5.2 (2026-08-31) 修复「非任务工时统计」被误判成异常表导致 DIY 非任务无数据；
@@ -48,6 +48,13 @@
                       · 跨日早班1 在管理看板矩阵加「早」字角标（橙黄渐变）
                       · 新增「⚙ 阈值配置」独立看板（modal）——原来挤在管理看板顶部的阈值按钮搬进来
                       · 所有阈值都从 BAILING_RULES 读，加 loadBAilingRulesOverrides() 从 localStorage 恢复
+  V9.16  (2026-10-07) 口径分离：量级只认工作量表，工时利用率表不再产生产出量级
+                      · 修掉 processUtil 把「出勤时长=0」默认成 8h 的遗留 hack ——
+                        工时表 478 行休假日全被伪造成 8h 出勤（杜磊 9-22 年假被注入补全行，
+                        再拿工时表「通航平台审核条 53」当量级显示，而工作量表当天根本没有行）
+                      · _injectUtilAttendRows 删除「平台审核条兜底当量级」分级，补全行产出只取标准条列
+                      · 连带让 V9.9 的 shouldSkipFormulaUtil（无出勤跳过公式利用率）真正生效
+                        ——之前出勤恒≥8，跳过分支在产线上从未触发过
 -->
 <!DOCTYPE html>
 <html lang="zh-CN">
@@ -58,7 +65,7 @@
 <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
 <meta http-equiv="Pragma" content="no-cache">
 <meta http-equiv="Expires" content="0">
-<title>百灵工作量仪表盘 V9.15</title>
+<title>百灵工作量仪表盘 V9.16</title>
 <link rel="stylesheet" href="vendor/tailwind.min.css">
 <script src="vendor/chart.umd.min.js"></script>
 <script src="vendor/xlsx.full.min.js"></script>
@@ -1596,7 +1603,7 @@
   <div class="inspiration-author" id="inspirationAuthor">—— 加油的打工人</div>
   <button onclick="openInspirationManager()" style="position:absolute;right:10px;top:10px;background:rgba(255,255,255,0.6);border:1px solid #cbd5e1;color:#64748b;border-radius:6px;padding:3px 8px;font-size:11px;cursor:pointer;" title="管理语录">⚙ 管理</button>
   <!-- V8.48：版本号挪到这里（右下小角标），主看板顶部不再占位 -->
-  <span style="position:absolute;left:14px;top:50%;transform:translateY(-50%);font-size:10px;color:#94a3b8;font-weight:500;letter-spacing:0.4px;font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;opacity:0.65;" title="当前版本 V9.15（2026-09-09）">v9.15</span>
+  <span style="position:absolute;left:14px;top:50%;transform:translateY(-50%);font-size:10px;color:#94a3b8;font-weight:500;letter-spacing:0.4px;font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;opacity:0.65;" title="当前版本 V9.16（2026-10-07）">v9.16</span>
 </div>
 
 <!-- Modal: Daily Row CRUD -->
@@ -2604,8 +2611,10 @@ function processUtil(rows) { if (!rows.length) return; const headers=Object.keys
         if (App.empDateHours.has(hk)) { hoursData = App.empDateHours.get(hk); break; }
       }
       if (hoursData) {
-        // 出勤时长：有值则优先保留工时利用率底表的值；否则默认8h
-        if (!attendH_raw) attendH = 8;
+        // V9.16：出勤以工时利用率底表为准 —— 0 就是 0，年假/休息日不再默认 8h。
+        //   旧逻辑 `if(!attendH_raw) attendH = 8` 会把全部休假行伪造成 8h 出勤，
+        //   导致 _injectUtilAttendRows 把休假当天当成「出勤无工作量记录」注入补全行，
+        //   再经「平台审核条」兜底把工时表审核条直接当量级显示（杜磊 9-22 = 53 的根因链）。
         // 通航审核时长 = tongMin / 60
         if (!tongH_raw && hoursData.tongMin > 0) tongH = hoursData.tongMin / 60;
         // 非通航审核时长 = nontongMin / 60
@@ -2614,13 +2623,7 @@ function processUtil(rows) { if (!rows.length) return; const headers=Object.keys
         if (!offlineTimingH_raw && hoursData.timingMin > 0) offlineTimingH = hoursData.timingMin / 60;
         // 非任务时长 = nontaskMin / 60
         if (!nontaskH_raw && hoursData.nontaskMin > 0) nontaskH = hoursData.nontaskMin / 60;
-      } else if (!attendH_raw) {
-        // 工时利用率底表无出勤，且原始数据也找不到 → 默认8h
-        attendH = 8;
       }
-    } else if (!attendH_raw) {
-      // 原始数据未就绪时，默认出勤8h
-      attendH = 8;
     }
     
     if(empName || uinRaw){
@@ -3029,16 +3032,12 @@ function _injectUtilAttendRows(){
 
   if(!agg.size) return;
 
-  let nFromPlat = 0, nZero = 0;
+  let nZero = 0;
   for(const a of agg.values()){
-    // 产出取数分级：① 标准条列（与现有口径完全一致）② 平台审核条 ③ 都没有才是真·零产出
+    // V9.16：量级口径收回 —— 补全行产出只取工时表「标准条列」，不再用「平台审核条」兜底。
+    //   平台审核条未折算标准条，直接充当量级会把工时利用率表的口径混进工作量矩阵
+    //   （杜磊 2026-09-22 年假当天被显示成量级 53 的根因之一）。以各自表格的数据为准。
     let totalStd = a.stdSum;
-    let stdFromPlat = false;
-    if(!(totalStd > 0) && a.platSum > 0){
-      totalStd = a.platSum;
-      stdFromPlat = true;
-      nFromPlat++;
-    }
     if(!(totalStd > 0)) nZero++;
     App.dailyData.push({
       emp: a.emp, empEn: a.empEn, uin: a.uin, org: a.org, date: a.date,
@@ -3052,13 +3051,12 @@ function _injectUtilAttendRows(){
       // 标记：出勤了但工作量表无记录
       _phantom: true,
       _attendOnly: true,
-      _stdFromPlat: stdFromPlat,     // 产出用的是平台审核条（未折算标准条）
       _zeroOutput: !(totalStd > 0)   // 出勤了却完全没有产出 —— 最该被看见的异常
     });
   }
   console.log('[出勤补全] 注入「出勤无工作量记录」人天', agg.size, '条（涉及',
               new Set([...agg.values()].map(x=>x.emp)).size, '人）',
-              '| 产出取平台审核条', nFromPlat, '条 | 真·零产出', nZero, '条');
+              '| 真·零产出', nZero, '条（V9.16 起平台审核条不再充当量级）');
 }
 
 
