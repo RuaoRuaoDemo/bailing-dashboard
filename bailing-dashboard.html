@@ -1,4 +1,4 @@
-<!-- Bailing Dashboard V9.16 - 20261007 - 量级口径分离：工时表不再充当工作量量级 -->
+<!-- Bailing Dashboard V9.17 - 20261028 - 异常归属校验（同名不同人不再串号）+ 统计按组 -->
 <!--
   ===== 近期版本变更 =====
   V9.5.2 (2026-08-31) 修复「非任务工时统计」被误判成异常表导致 DIY 非任务无数据；
@@ -55,6 +55,13 @@
                       · _injectUtilAttendRows 删除「平台审核条兜底当量级」分级，补全行产出只取标准条列
                       · 连带让 V9.9 的 shouldSkipFormulaUtil（无出勤跳过公式利用率）真正生效
                         ——之前出勤恒≥8，跳过分支在产线上从未触发过
+  V9.17  (2026-10-28) 异常归属校验 + 统计按组（全量 222 个姓名里只有「张宇」一个重名被误串）
+                      · addAnomaly 用 orgs 集合记下「该姓名+日期」出现过的所有组织；
+                        矩阵命中前调 _anomMatchesOrg 校验归属，组织对不上就不点亮
+                        → 张宇(富贵蕨项目 uin027209) 的 10-14「班次外非任务≠0」
+                          不再串到 张宇(嘉兰X项目 uin05938) 身上
+                      · getAnomalySummary 支持传入本组 (emp|date) 集合 —— 之前一律统计全量，
+                        导致每个项目 tab 显示的 P0/P1 都是全公司的数
 -->
 <!DOCTYPE html>
 <html lang="zh-CN">
@@ -65,7 +72,7 @@
 <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
 <meta http-equiv="Pragma" content="no-cache">
 <meta http-equiv="Expires" content="0">
-<title>百灵工作量仪表盘 V9.16</title>
+<title>百灵工作量仪表盘 V9.17</title>
 <link rel="stylesheet" href="vendor/tailwind.min.css">
 <script src="vendor/chart.umd.min.js"></script>
 <script src="vendor/xlsx.full.min.js"></script>
@@ -1603,7 +1610,7 @@
   <div class="inspiration-author" id="inspirationAuthor">—— 加油的打工人</div>
   <button onclick="openInspirationManager()" style="position:absolute;right:10px;top:10px;background:rgba(255,255,255,0.6);border:1px solid #cbd5e1;color:#64748b;border-radius:6px;padding:3px 8px;font-size:11px;cursor:pointer;" title="管理语录">⚙ 管理</button>
   <!-- V8.48：版本号挪到这里（右下小角标），主看板顶部不再占位 -->
-  <span style="position:absolute;left:14px;top:50%;transform:translateY(-50%);font-size:10px;color:#94a3b8;font-weight:500;letter-spacing:0.4px;font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;opacity:0.65;" title="当前版本 V9.16（2026-10-07）">v9.16</span>
+  <span style="position:absolute;left:14px;top:50%;transform:translateY(-50%);font-size:10px;color:#94a3b8;font-weight:500;letter-spacing:0.4px;font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;opacity:0.65;" title="当前版本 V9.17（2026-10-28）">v9.17</span>
 </div>
 
 <!-- Modal: Daily Row CRUD -->
@@ -12615,10 +12622,33 @@ function addAnomaly(emp, date, level, typeKey, org){
   emp=String(emp).trim(); date=String(date).trim();
   if(!emp || !date) return;
   var key=emp+'|'+date;
-  if(!App.anomalyMap.has(key)) App.anomalyMap.set(key,{p0:new Set(),p1:new Set(),org:org||''});
+  // V9.17：orgs 用集合收集「该姓名+日期」下出现过的所有组织。
+  //   异常 key 只有「中文名|日期」，同名不同人会共用同一条记录
+  //   （如 张宇：嘉兰X项目 uin05938 / 富贵蕨项目 uin027209）。
+  //   记全组织，才能在命中前做归属校验，避免把别人的异常算到本组这个人身上。
+  if(!App.anomalyMap.has(key)) App.anomalyMap.set(key,{p0:new Set(),p1:new Set(),org:org||'',orgs:new Set()});
   var rec=App.anomalyMap.get(key);
+  if(!rec.orgs) rec.orgs=new Set();
   if(level==='p0') rec.p0.add(typeKey); else rec.p1.add(typeKey);
   if(org && !rec.org) rec.org=org;
+  if(org) rec.orgs.add(String(org).trim());
+}
+
+// V9.17：异常命中前的归属校验（防同名不同人串号）
+//   要求：异常记录里出现过的组织，至少有一个与当前行的组织匹配，才算这个人的异常。
+//   任一侧缺组织信息时不拦截（保守，避免因数据缺列误杀正常异常）。
+function _anomMatchesOrg(rec, rowOrg){
+  if(!rec) return false;
+  if(!rec.orgs || !rec.orgs.size) return true;
+  if(!rowOrg) return true;
+  var ro=String(rowOrg).trim();
+  if(!ro) return true;
+  var hit=false;
+  rec.orgs.forEach(function(o){
+    if(hit || !o) return;
+    if(_orgMatch(ro, o) || _orgMatch(o, ro)) hit=true;
+  });
+  return hit;
 }
 
 // 通用 P0 解析（出现即异常）
@@ -12717,13 +12747,17 @@ function parseAnomUtil(rows){
 }
 
 // 异常统计
-function getAnomalySummary(){
-  var p0=0,p1=0;
-  App.anomalyMap.forEach(function(rec){
+// V9.17：支持传入本组 (emp|date) 集合 —— 之前一律统计全量 anomalyMap，
+//        导致每个项目 tab 显示的 P0/P1 都是全公司的数，跟当前组无关。
+function getAnomalySummary(scopeKeys){
+  var p0=0,p1=0,tot=0;
+  App.anomalyMap.forEach(function(rec, key){
+    if(scopeKeys && !scopeKeys.has(key)) return;
     if(rec.p0.size) p0++;
     if(rec.p1.size) p1++;
+    tot++;
   });
-  return {p0:p0,p1:p1,total:App.anomalyMap.size};
+  return {p0:p0,p1:p1,total: scopeKeys ? tot : App.anomalyMap.size};
 }
 
 // V9.4：阈值配置加载 / 应用（持久化到 localStorage）
@@ -14465,7 +14499,11 @@ function renderManageBoard(){
       }
 
       // V9.4：异常高亮叠加（P0 黑底红字 / P1 蓝底黄字，覆盖常规配色）
-      const _anom = App.anomalyMap.get(emp + '|' + iso);
+      // V9.17：命中前先校验归属，避免同名不同人的异常串到本组这个人身上
+      const _anomRec = App.anomalyMap.get(emp + '|' + iso);
+      const _anom = (typeof _anomMatchesOrg === 'function')
+        ? (_anomMatchesOrg(_anomRec, d && (d.org || d._org)) ? _anomRec : null)
+        : _anomRec;
       if(_anom && _anom.p0.size){
         cellStyle = 'background:#111827;color:#ef4444;font-weight:700;cursor:pointer;border-bottom:2px solid #ef4444;';
         cellTitle = (cellTitle ? cellTitle + '；' : '') + 'P0异常：' + [..._anom.p0].join('、');
@@ -14497,10 +14535,12 @@ function renderManageBoard(){
   html += '</tbody></table>';
 
   // V9.4：异常统计摘要 + 图例（置于矩阵上方）
-  const _sum = getAnomalySummary();
+  // V9.17：只统计本组（之前是全量，各项目 tab 显示的全是同一个全公司数字）
+  const _groupKeys = new Set(groupData.map(function(x){ return x.emp + '|' + x.date; }));
+  const _sum = getAnomalySummary(_groupKeys);
   const _legend =
     '<div style="display:flex;flex-wrap:wrap;gap:12px;align-items:center;margin:0 0 10px 2px;font-size:11px;">'
-    + '<span style="font-weight:700;color:#334155;">异常统计：</span>'
+    + '<span style="font-weight:700;color:#334155;">异常统计（本组）：</span>'
     + '<span style="background:#111827;color:#ef4444;padding:2px 8px;border-radius:4px;font-weight:700;">P0 ' + _sum.p0 + '</span>'
     + '<span style="background:#1e3a8a;color:#fde047;padding:2px 8px;border-radius:4px;font-weight:700;">P1 ' + _sum.p1 + '</span>'
     + '<span style="color:#64748b;">本组高亮单元格：' + anomalyCount + '</span>'
